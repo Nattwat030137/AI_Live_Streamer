@@ -1,0 +1,11 @@
+{
+    "shipping_area": "ทั่วประเทศไทย",
+    "shipping_companies": [
+        "SPX Express",
+        "Flash Express",
+        "LEX Express",
+        "J&T Express"
+    ],
+    "delivery_time": "ขึ้นอยู่กับพื้นที่และบริษัทขนส่ง",
+    "shipping_note": "บริษัทขนส่งที่ใช้ขึ้นอยู่กับคำสั่งซื้อและช่องทางการสั่งซื้อ"
+}

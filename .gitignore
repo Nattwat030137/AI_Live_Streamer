@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Secret environment variables
+.env
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs and generated files
+logs/
+temp/
+output/
+backup/
+
+# Editor and operating system
+.vscode/
+Thumbs.db
+Desktop.ini

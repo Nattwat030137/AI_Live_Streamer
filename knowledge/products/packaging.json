@@ -1,0 +1,17 @@
+{
+    "category_id": "packaging",
+    "category_name": "บรรจุภัณฑ์เบเกอรี่",
+    "products": [
+        {
+            "id": "PACK-001",
+            "name": "รอใส่ชื่อสินค้าจริง",
+            "description": "รอใส่รายละเอียดสินค้าจริง",
+            "price": null,
+            "stock_status": "unknown",
+            "shipping_available": true,
+            "sales_channels": [
+                "Shopee"
+            ]
+        }
+    ]
+}
