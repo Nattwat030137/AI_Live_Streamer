@@ -126,7 +126,19 @@ class MockLLMProvider:
             ),
         ):
             return self._answer_thank_you()
-
+        
+        if self._contains_any(
+            customer_text,
+            (
+                "ถุงซีล",
+                "ขนาดถุง",
+                "ใช้ถุง",
+                "ถุงขนาด",
+                "compatible bag",
+            ),
+        ):
+            product_attribute = "bag"
+            
         # ใช้ข้อมูลสินค้าเมื่อไม่มี Intent เฉพาะด้านบน
         knowledge_response = (
             self._answer_from_knowledge(
@@ -294,13 +306,40 @@ class MockLLMProvider:
             )
 
             
+        material_text = (
+            f" ผลิตจากวัสดุ {product.material}"
+            if product.material
+            else ""
+        )
+
         return self._build_response(
             text=(
                 f"{product.model} คือ "
-                f"{product.name} ค่ะ"
+                f"{product.name}{material_text} ค่ะ"
             ),
             response_type="knowledge_product_information",
             matched_rule="PRODUCT_CATALOG",
+        )
+    def _answer_greeting(
+        self,
+    ) -> MockLLMResponse:
+        """ตอบคำทักทาย"""
+
+        return self._build_response(
+            text="สวัสดีค่ะ 😊 ยินดีต้อนรับสู่ร้าน Bakery D'Ver มีสินค้าอะไรให้แนะนำไหมคะ",
+            response_type="greeting",
+            matched_rule="GREETING",
+        )
+
+    def _answer_price(
+        self,
+    ) -> MockLLMResponse:
+        """ตอบคำถามเกี่ยวกับราคา"""
+
+        return self._build_response(
+            text="ขออนุญาตตรวจสอบราคาสินค้าให้สักครู่นะคะ",
+            response_type="price_request",
+            matched_rule="PRICE_REQUEST",
         )
     
     def _answer_stock(

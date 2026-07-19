@@ -129,6 +129,8 @@ class CommercePromptBuilder:
         self,
         knowledge: KnowledgeResult,
     ) -> str:
+        """สร้างส่วนข้อมูลสินค้าที่ผ่านการตรวจสอบแล้ว."""
+
         if not knowledge.found or not knowledge.products:
             return (
                 "ข้อมูลสินค้าที่ตรวจสอบแล้ว\n"
@@ -140,10 +142,31 @@ class CommercePromptBuilder:
             for product in knowledge.products
         ]
 
+        product_information = "\n\n".join(blocks)
+
+        if len(knowledge.products) >= 2:
+            comparison_instruction = (
+                "\n\nคำแนะนำสำหรับการตอบเมื่อมีสินค้าหลายรายการ\n"
+                "- ลูกค้าอาจต้องการเปรียบเทียบสินค้าที่ระบุไว้\n"
+                "- เปรียบเทียบสินค้าแต่ละรุ่นจากข้อมูลที่ตรวจสอบแล้วเท่านั้น\n"
+                "- อธิบายความเหมือนและความแตกต่างให้ชัดเจนและกระชับ\n"
+                "- ควรระบุชื่อหรือเลขรุ่นของสินค้าแต่ละรายการ\n"
+                "- หากข้อมูลคุณสมบัติบางอย่างของรุ่นใดไม่มี "
+                "ให้แจ้งว่าไม่มีข้อมูลส่วนนั้นในระบบ\n"
+                "- ห้ามเดาข้อมูล ราคา สต็อก ขนาด วัสดุ "
+                "หรือคุณสมบัติที่ไม่ได้ระบุไว้\n"
+                "- หากยังสรุปไม่ได้ว่ารุ่นใดเหมาะกว่า "
+                "ให้ขอข้อมูลการใช้งานเพิ่มเติมจากลูกค้า"
+            )
+        else:
+            comparison_instruction = ""
+
         return (
             "ข้อมูลสินค้าที่ตรวจสอบแล้ว\n"
-            + "\n\n".join(blocks)
+            + product_information
+            + comparison_instruction
         )
+
     @staticmethod
     def _build_conversation_section(
         context: str,
@@ -222,14 +245,14 @@ class CommercePromptBuilder:
     
     @staticmethod
     def _build_style_section(
-    style,
-) -> str:
-     """ สร้างส่วนกำหนดรูปแบบคำตอบ """
+        style,
+    ) -> str:
+        """สร้างส่วนกำหนดรูปแบบคำตอบ"""
 
-     return (
-        "รูปแบบคำตอบ\n"
-        f"{style.instruction}"
-      )
+        return (
+            "รูปแบบคำตอบ\n"
+            f"{style.instruction}"
+        )
 
 
 def main() -> None:

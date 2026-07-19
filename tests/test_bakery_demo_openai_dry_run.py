@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+from app.llm.config import LLMConfig
+
 from app.llm.config import LLMConfig
 from demo.bakery_demo import BakeryDemo
 from demo.sample_data import DemoScenario
