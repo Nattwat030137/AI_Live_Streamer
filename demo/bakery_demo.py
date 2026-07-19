@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from time import perf_counter
+from dataclasses import dataclass
 from typing import Any
 
 from app.intent_engine import detect_intent
@@ -150,6 +151,13 @@ STRATEGY_BY_RULE: dict[str, str] = {
     ),
 }
 
+@dataclass(slots=True)
+class PreparedContext:
+    resolved_models: list[str]
+    search_plan: Any
+    resolved_search_plan: Any
+    search_plan_data: dict[str, Any]
+    product_attribute: Any
 
 class BakeryDemo:
     """ประสานงานส่วนต่าง ๆ ของ Bakery Demo."""
@@ -190,6 +198,90 @@ class BakeryDemo:
         )
         self.memory = ConversationMemory()
         self.product_slots = ProductSlots()
+    def _prepare_context(
+        self,
+        scenario: DemoScenario,
+    ) -> PreparedContext:
+        """
+        เตรียม Memory, Reference, Search Plan
+        และ Product Attribute สำหรับข้อความลูกค้า.
+        """
+
+        customer_message = (
+            scenario.customer_message
+        )
+
+        self.memory.add_customer(
+            customer_message
+        )
+
+        search_plan = create_search_plan(
+            message=customer_message,
+            max_tasks=10,
+            graph_limit_per_task=4,
+        )
+
+        resolved_models = (
+            self.memory.resolve_models(
+                search_plan.extracted_models
+            )
+        )
+
+        reference_model = resolve_reference(
+            customer_message,
+            self.memory,
+        )
+
+        if (
+            reference_model is not None
+            and reference_model
+            not in resolved_models
+        ):
+            resolved_models.insert(
+                0,
+                reference_model,
+            )
+
+        self.memory.active_models = (
+            resolved_models
+        )
+
+        resolved_search_plan = (
+            clone_search_plan_with_models(
+                plan=search_plan,
+                models=resolved_models,
+                max_tasks=10,
+                graph_limit_per_task=4,
+            )
+        )
+
+        search_plan_data = (
+            search_plan_to_dict(
+                resolved_search_plan
+            )
+        )
+
+        pre_intent = detect_intent(
+            customer_message
+        )
+
+        product_attribute = (
+            detect_product_attribute(
+                customer_message
+            )
+        )
+
+        self.memory.update_context(
+            intent=pre_intent.value,
+        )
+
+        return PreparedContext(
+    resolved_models=resolved_models,
+    search_plan=search_plan,
+    resolved_search_plan=resolved_search_plan,
+    search_plan_data=search_plan_data,
+    product_attribute=product_attribute,
+)
 
     def run_scenario(
         self,
@@ -198,65 +290,29 @@ class BakeryDemo:
         """ประมวลผล Scenario หนึ่งรายการ."""
 
         started_at = perf_counter()
-        self.memory.add_customer(
-    scenario.customer_message
-)
-
-        search_plan = create_search_plan(
-            message=(
-                scenario.customer_message
-            ),
-            max_tasks=10,
-            graph_limit_per_task=4,
+        
+        prepared = self._prepare_context(
+            scenario
         )
 
-        
+        search_plan = prepared.search_plan
+
         resolved_models = (
-    self.memory.resolve_models(
-        search_plan.extracted_models
-    )
-)
-        reference_model = resolve_reference(
-    scenario.customer_message,
-    self.memory,
-)
+            prepared.resolved_models
+        )
 
-        if (
-    reference_model is not None
-    and reference_model not in resolved_models
-):
-         resolved_models.insert(
-        0,
-        reference_model,
-    )       
-        
-        self.memory.active_models = (
-    resolved_models
-)
         resolved_search_plan = (
-    clone_search_plan_with_models(
-        plan=search_plan,
-        models=resolved_models,
-        max_tasks=10,
-        graph_limit_per_task=4,
-    )
-)
-        search_plan_data = search_plan_to_dict(
-    resolved_search_plan
-)       
-        pre_intent = detect_intent(
-    scenario.customer_message
-)
-        product_attribute = (
-    detect_product_attribute(
-        scenario.customer_message
-    )
-)
+            prepared.resolved_search_plan
+        )
 
-        self.memory.update_context(
-    intent=pre_intent.value,
-)
-    
+        search_plan_data = (
+            prepared.search_plan_data
+        )
+
+        product_attribute = (
+            prepared.product_attribute
+        )
+
         knowledge_result = (
             self.knowledge_retriever.retrieve(
                 resolved_search_plan
