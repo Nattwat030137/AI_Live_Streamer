@@ -179,45 +179,26 @@ class MockLLMProvider:
             product_attribute or "general"
         ).strip().lower()
 
+        if normalized_attribute == "name":
+            if product.name:
+                return self._build_response(
+                    text=f"{product.name} ค่ะ",
+                    response_type="knowledge_product_name",
+                    matched_rule="PRODUCT_CATALOG",
+                )
+
+            return self._build_response(
+                text=(
+                    f"ขณะนี้ยังไม่มีข้อมูลชื่อสินค้าของ "
+                    f"รุ่น {product.model} ในระบบค่ะ"
+                ),
+                response_type="knowledge_product_name_missing",
+                matched_rule="PRODUCT_CATALOG",
+            )
+
         if normalized_attribute == "color":
             if product.color:
-                if normalized_attribute == "category":
-                 if product.category:
-                  return self._build_response(
-                    text=(
-                        f"{product.name} "
-                        f"อยู่ในหมวดสินค้า {product.category} ค่ะ"
-                    ),
-                    response_type="knowledge_product_category",
-                    matched_rule="PRODUCT_CATALOG",
-                )
-
-            return self._build_response(
-                text=(
-                    f"ขณะนี้ยังไม่มีข้อมูลหมวดสินค้าของ "
-                    f"{product.name} ในระบบค่ะ"
-                ),
-                response_type="knowledge_product_category_missing",
-                matched_rule="PRODUCT_CATALOG",
-            )
-
-        if normalized_attribute == "note":
-            if product.notes:
                 return self._build_response(
-                    text=product.notes,
-                    response_type="knowledge_product_note",
-                    matched_rule="PRODUCT_CATALOG",
-                )
-
-            return self._build_response(
-                text=(
-                    f"ขณะนี้ยังไม่มีหมายเหตุของ "
-                    f"{product.name} ในระบบค่ะ"
-                ),
-                response_type="knowledge_product_note_missing",
-                matched_rule="PRODUCT_CATALOG",
-            )
-            return self._build_response(
                     text=(
                         f"{product.name} "
                         f"มีสี {product.color} ค่ะ"
@@ -259,14 +240,22 @@ class MockLLMProvider:
             if product.compatible_bag:
                 return self._build_response(
                     text=(
-                        f"{product.name} ใช้ถุงขนาด "
-                        f"{product.compatible_bag} ค่ะ"
+                        f"{product.name} "
+                        f"ใช้ถุงขนาด {product.compatible_bag} ค่ะ"
                     ),
                     response_type="knowledge_compatible_bag",
-                    matched_rule=(
-                        "PRODUCT_CATALOG_COMPATIBLE_BAG"
-                    ),
+                    matched_rule="PRODUCT_CATALOG_COMPATIBLE_BAG",
                 )
+
+            return self._build_response(
+                text=(
+                    f"ขณะนี้ยังไม่มีข้อมูลขนาดถุงที่ใช้กับ "
+                    f"{product.name} ในระบบค่ะ"
+                ),
+                response_type="knowledge_compatible_bag_missing",
+                matched_rule="PRODUCT_CATALOG_COMPATIBLE_BAG",
+            )
+                   
         if normalized_attribute == "category":
             if product.category:
                 return self._build_response(
@@ -304,17 +293,7 @@ class MockLLMProvider:
                 matched_rule="PRODUCT_CATALOG",
             )
 
-            return self._build_response(
-                text=(
-                    f"ขณะนี้ยังไม่มีข้อมูลขนาดถุงที่ใช้กับ "
-                    f"{product.name} ในระบบค่ะ"
-                ),
-                response_type="knowledge_compatible_bag_missing",
-                matched_rule=(
-                    "PRODUCT_CATALOG_COMPATIBLE_BAG"
-                ),
-            )
-
+            
         return self._build_response(
             text=(
                 f"{product.model} คือ "
