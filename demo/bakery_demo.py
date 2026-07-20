@@ -7,10 +7,9 @@ from time import perf_counter
 from dataclasses import dataclass
 from typing import Any
 
-from app.intent_engine import detect_intent
-from app.product_attribute import (
-    detect_product_attribute,
-)
+from app.intent_engine import Intent
+from app.product_attribute import ProductAttribute
+from app.services import CommerceService
 from app.memory.conversation import ConversationMemory
 from app.memory.product_slots import ProductSlots
 from app.memory.reference_resolver import (
@@ -198,6 +197,8 @@ class BakeryDemo:
         )
         self.memory = ConversationMemory()
         self.product_slots = ProductSlots()
+        self.commerce_service = CommerceService()
+        
     def _prepare_context(
         self,
         scenario: DemoScenario,
@@ -261,14 +262,21 @@ class BakeryDemo:
             )
         )
 
-        pre_intent = detect_intent(
-            customer_message
-        )
+        service_response = (
+            self.commerce_service.process_message(
+                customer_message=customer_message,
+                platform=scenario.platform,
+    )
+)
 
-        product_attribute = (
-            detect_product_attribute(
-                customer_message
-            )
+        pre_intent = Intent(
+            service_response.metadata["intent"]
+)
+
+        product_attribute = ProductAttribute(
+            service_response.metadata[
+                "product_attribute"
+            ]
         )
 
         self.memory.update_context(
