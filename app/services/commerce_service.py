@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from time import perf_counter
+from app.intent_engine import detect_intent
+from app.product_attribute import detect_product_attribute
 
 from app.services.models import CommerceResponse
 
@@ -31,6 +33,8 @@ class CommerceService:
 
         message = customer_message.strip()
         selected_platform = platform.strip().lower() or "shopee"
+        intent = detect_intent(message)
+        product_attribute = detect_product_attribute(message)
 
         if not message:
             elapsed_ms = (perf_counter() - started_at) * 1000
@@ -58,6 +62,8 @@ class CommerceService:
             metadata={
                 "customer_message": message,
                 "platform": selected_platform,
-                "status": "service_ready",
+                "intent": intent.value,
+                "product_attribute": product_attribute.value,
+                "status": "intent_analyzed",
             },
         )
