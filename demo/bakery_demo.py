@@ -7,19 +7,14 @@ from time import perf_counter
 from dataclasses import dataclass
 from typing import Any
 
-from app.services import CommerceService
+from app.services import (
+    CommerceService,
+    SearchPlanningService,
+)
 from app.memory.conversation import ConversationMemory
 from app.memory.product_slots import ProductSlots
-from app.memory.reference_resolver import (
-    resolve_reference,
-)
 from app.policies.engine import GovernanceEngine
 from app.policies.registry import PolicyRegistry
-from app.search_planner import (
-    create_search_plan,
-    clone_search_plan_with_models,
-    search_plan_to_dict,
-)
 from app.llm.factory import create_llm_provider
 from app.llm.types import LLMRequest
 from app.prompt.builder import CommercePromptBuilder
@@ -196,6 +191,9 @@ class BakeryDemo:
         self.memory = ConversationMemory()
         self.product_slots = ProductSlots()
         self.commerce_service = CommerceService()
+        self.search_planning = SearchPlanningService(
+            memory=self.memory,
+        )
 
     def _prepare_context(
         self,
@@ -214,51 +212,18 @@ class BakeryDemo:
             customer_message
         )
 
-        search_plan = create_search_plan(
-            message=customer_message,
+        planning = self.search_planning.prepare(
+            customer_message=customer_message,
             max_tasks=10,
             graph_limit_per_task=4,
         )
 
-        resolved_models = (
-            self.memory.resolve_models(
-                search_plan.extracted_models
-            )
-        )
-
-        reference_model = resolve_reference(
-            customer_message,
-            self.memory,
-        )
-
-        if (
-            reference_model is not None
-            and reference_model
-            not in resolved_models
-        ):
-            resolved_models.insert(
-                0,
-                reference_model,
-            )
-
-        self.memory.active_models = (
-            resolved_models
-        )
-
+        search_plan = planning.search_plan
+        resolved_models = planning.resolved_models
         resolved_search_plan = (
-            clone_search_plan_with_models(
-                plan=search_plan,
-                models=resolved_models,
-                max_tasks=10,
-                graph_limit_per_task=4,
-            )
+            planning.resolved_search_plan
         )
-
-        search_plan_data = (
-            search_plan_to_dict(
-                resolved_search_plan
-            )
-        )
+        search_plan_data = planning.search_plan_data
 
         commerce_context = (
             self.commerce_service.prepare_context(
