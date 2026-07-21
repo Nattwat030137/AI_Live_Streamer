@@ -102,3 +102,81 @@ def test_follow_up_message_reuses_active_model() -> None:
 
     assert service.memory.active_models == ["5040"]
     assert len(service.memory.turns) == 2
+def test_product_knowledge_is_returned() -> None:
+    service = CommerceService()
+
+    response = service.process_message(
+        "มีถ้วยคัพเค้กรุ่น 5040 ไหม"
+    )
+
+    assert response.metadata[
+        "knowledge_found"
+    ] is True
+
+    assert response.metadata[
+        "knowledge_status"
+    ] == "found"
+
+    primary_product = response.metadata[
+        "primary_product"
+    ]
+
+    assert primary_product is not None
+    assert primary_product["model"] == "5040"
+    assert primary_product["material"] == "กระดาษ"
+
+    assert response.metadata["knowledge"][
+        "found"
+    ] is True
+
+
+def test_missing_product_has_no_primary_product() -> None:
+    service = CommerceService()
+
+    response = service.process_message(
+        "มีสินค้ารุ่น 9999 ไหม"
+    )
+
+    assert response.metadata[
+        "knowledge_found"
+    ] is False
+
+    assert response.metadata[
+        "knowledge_status"
+    ] == "not_found"
+
+    assert response.metadata[
+        "primary_product"
+    ] is None
+
+    assert response.metadata["knowledge"][
+        "warnings"
+    ]
+
+
+def test_follow_up_reuses_product_knowledge() -> None:
+    service = CommerceService()
+
+    service.process_message(
+        "มีถ้วยรุ่น 5040 ไหม"
+    )
+
+    response = service.process_message(
+        "รุ่นนี้ทำจากวัสดุอะไร"
+    )
+
+    assert response.metadata[
+        "resolved_models"
+    ] == ["5040"]
+
+    assert response.metadata[
+        "knowledge_found"
+    ] is True
+
+    assert response.metadata[
+        "primary_product"
+    ]["model"] == "5040"
+
+    assert response.metadata[
+        "primary_product"
+    ]["material"] == "กระดาษ"

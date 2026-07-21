@@ -14,6 +14,9 @@ from app.services.models import (
     CommerceContext,
     CommerceResponse,
 )
+from app.services.product_knowledge_service import (
+    ProductCatalogRetriever,
+)
 from app.services.search_planning_service import (
     SearchPlanningService,
 )
@@ -31,14 +34,23 @@ class CommerceService:
         self,
         *,
         memory: ConversationMemory | None = None,
+        knowledge_retriever: (
+            ProductCatalogRetriever | None
+        ) = None,
     ) -> None:
-        """Initialize commerce and search-planning services."""
+        """Initialize commerce application services."""
 
         self.memory = memory or ConversationMemory()
+
         self.search_planning_service = (
             SearchPlanningService(
                 memory=self.memory,
             )
+        )
+
+        self.knowledge_retriever = (
+            knowledge_retriever
+            or ProductCatalogRetriever()
         )
 
     def prepare_context(
@@ -76,7 +88,7 @@ class CommerceService:
         platform: str = "shopee",
     ) -> CommerceResponse:
         """
-        Analyze a customer message and prepare its search plan.
+        Analyze a message and prepare search and knowledge data.
         """
 
         started_at = perf_counter()
@@ -118,6 +130,17 @@ class CommerceService:
             planning_result.resolved_models
         )
 
+        knowledge_result = (
+            self.knowledge_retriever.retrieve(
+                planning_result.resolved_search_plan
+            )
+        )
+
+        knowledge_data = knowledge_result.to_dict()
+        primary_product = (
+            knowledge_result.primary_product
+        )
+
         self.memory.add_customer(
             message,
             metadata={
@@ -127,6 +150,9 @@ class CommerceService:
                     product_attribute.value
                 ),
                 "platform": selected_platform,
+                "knowledge_found": (
+                    knowledge_result.found
+                ),
             },
         )
 
@@ -155,6 +181,20 @@ class CommerceService:
                     planning_result.search_plan_data
                 ),
                 "search_status": "prepared",
+                "knowledge": knowledge_data,
+                "knowledge_found": (
+                    knowledge_result.found
+                ),
+                "knowledge_status": (
+                    "found"
+                    if knowledge_result.found
+                    else "not_found"
+                ),
+                "primary_product": (
+                    primary_product.to_dict()
+                    if primary_product is not None
+                    else None
+                ),
                 "status": "intent_analyzed",
             },
         )
