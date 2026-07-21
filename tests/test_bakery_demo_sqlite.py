@@ -52,29 +52,36 @@ def test_commerce_dependencies_are_shared(
     )
 
 
-def test_prepared_context_preserves_pipeline(
+def test_run_scenario_prepares_pipeline_once(
     demo: BakeryDemo,
 ) -> None:
+    original_prepare = (
+        demo.commerce_service.prepare_pipeline
+    )
+    prepare_spy = Mock(
+        wraps=original_prepare,
+    )
+    demo.commerce_service.prepare_pipeline = (
+        prepare_spy
+    )
+
     scenario = DemoScenario(
-        scenario_id="prepared-context-test",
-        title="Prepared Context Test",
+        scenario_id="prepare-pipeline-test",
+        title="Prepare Pipeline Test",
         customer_message="รุ่น 5040",
         platform="shopee",
         expected_rule="PRODUCT_CATALOG",
     )
 
-    prepared = demo._prepare_context(
+    report = demo.run_scenario(
         scenario
     )
 
-    assert prepared.pipeline.customer_message == (
-        "รุ่น 5040"
+    prepare_spy.assert_called_once_with(
+        customer_message="รุ่น 5040",
+        platform="shopee",
     )
-    assert prepared.pipeline.platform == "shopee"
-    assert (
-        prepared.knowledge_result
-        is prepared.pipeline.knowledge
-    )
+    assert report.matched_rule == "PRODUCT_CATALOG"
 
 
 def test_run_scenario_uses_commerce_response(

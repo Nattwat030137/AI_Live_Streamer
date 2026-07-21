@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import sys
 from time import perf_counter
-from dataclasses import dataclass
 from typing import Any
 
 from app.services import (
-    CommercePipelineResult,
     CommerceService,
     ResponseGenerationService,
 )
@@ -141,14 +139,6 @@ STRATEGY_BY_RULE: dict[str, str] = {
     ),
 }
 
-@dataclass(slots=True)
-class PreparedContext:
-    pipeline: CommercePipelineResult
-    resolved_models: list[str]
-    search_plan: Any
-    search_plan_data: dict[str, Any]
-    product_attribute: Any
-    knowledge_result: Any
 
 class BakeryDemo:
     """ประสานงานส่วนต่าง ๆ ของ Bakery Demo."""
@@ -195,11 +185,13 @@ class BakeryDemo:
             governance_engine=self.governance,
         )
 
-    def _prepare_context(
+    def run_scenario(
         self,
         scenario: DemoScenario,
-    ) -> PreparedContext:
-        """Prepare the shared commerce pipeline once."""
+    ) -> DemoReport:
+        """ประมวลผล Scenario หนึ่งรายการ."""
+
+        started_at = perf_counter()
 
         pipeline = (
             self.commerce_service.prepare_pipeline(
@@ -211,52 +203,21 @@ class BakeryDemo:
         )
 
         planning = pipeline.planning
+        search_plan = planning.search_plan
 
-        return PreparedContext(
-            pipeline=pipeline,
-            resolved_models=list(
-                planning.resolved_models
-            ),
-            search_plan=planning.search_plan,
-            search_plan_data=(
-                planning.search_plan_data
-            ),
-            product_attribute=(
-                pipeline.product_attribute
-            ),
-            knowledge_result=(
-                pipeline.knowledge
-            ),
-        )
-    def run_scenario(
-        self,
-        scenario: DemoScenario,
-    ) -> DemoReport:
-        """ประมวลผล Scenario หนึ่งรายการ."""
-
-        started_at = perf_counter()
-
-        prepared = self._prepare_context(
-            scenario
-        )
-
-        search_plan = prepared.search_plan
-
-        resolved_models = (
-            prepared.resolved_models
+        resolved_models = list(
+            planning.resolved_models
         )
 
         search_plan_data = (
-            prepared.search_plan_data
+            planning.search_plan_data
         )
 
         product_attribute = (
-            prepared.product_attribute
+            pipeline.product_attribute
         )
 
-        knowledge_result = (
-            prepared.knowledge_result
-        )
+        knowledge_result = pipeline.knowledge
 
         primary_product = (
             knowledge_result.primary_product
@@ -283,7 +244,7 @@ class BakeryDemo:
         commerce_response = (
             self.commerce_service
             .process_prepared_pipeline(
-                prepared.pipeline,
+                pipeline,
                 product_context=(
                     self.product_slots
                     .build_context_text()
