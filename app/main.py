@@ -1,4 +1,8 @@
-"""จุดเริ่มต้นของโปรแกรม AI Live Streamer."""
+"""Console entry point for AI Live Streamer."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
 
 from openai import (
     APIConnectionError,
@@ -7,63 +11,98 @@ from openai import (
     RateLimitError,
 )
 
-from app.ai_engine import ask_ai
-from app.voice_engine import speak
+from app.live_controller import LiveCommerceController
+
 from core.logger import logger
 
 
-def main() -> None:
-    """รับคำถาม แสดงคำตอบ และพูดคำตอบออกลำโพง."""
+InputCallback = Callable[[str], str]
+OutputCallback = Callable[[str], None]
 
-    logger.info("โปรแกรม AI Live Streamer เริ่มทำงาน")
 
-    print()
-    print("พิมพ์ข้อความเพื่อคุยกับ AI")
-    print("AI จะตอบเป็นข้อความและพูดออกลำโพงอัตโนมัติ")
-    print("พิมพ์ exit เพื่อปิดโปรแกรม")
-    print()
+def run_console(
+    controller: LiveCommerceController,
+    *,
+    input_callback: InputCallback = input,
+    output_callback: OutputCallback = print,
+) -> None:
+    """Run the interactive console with injectable input and output."""
+
+    logger.info("เริ่มต้นโปรแกรม AI Live Streamer")
+
+    output_callback("")
+    output_callback("พิมพ์ข้อความเพื่อคุยกับ AI")
+    output_callback(
+        "AI จะตอบข้อความและพูดคำตอบอัตโนมัติ"
+    )
+    output_callback("พิมพ์ exit เพื่อปิดโปรแกรม")
+    output_callback("")
 
     while True:
-        user_message = input("คุณ: ").strip()
-
-        if user_message.lower() == "exit":
+        try:
+            user_message = input_callback(
+                "คุณ: "
+            ).strip()
+        except (
+            EOFError,
+            KeyboardInterrupt,
+        ):
+            output_callback("")
             logger.info("ปิดโปรแกรม")
-            print("AI: ขอบคุณค่ะ แล้วพบกันใหม่")
+            break
+
+        if user_message.lower() in {
+            "exit",
+            "quit",
+            "q",
+        }:
+            logger.info("ปิดโปรแกรม")
+            output_callback(
+                "AI: ขอบคุณค่ะ แล้วพบกันใหม่"
+            )
             break
 
         if not user_message:
-            print("AI: กรุณาพิมพ์ข้อความก่อนนะคะ")
+            output_callback(
+                "AI: กรุณาพิมพ์ข้อความก่อนนะคะ"
+            )
             continue
 
         try:
-            print("AI กำลังคิด...")
+            output_callback("AI กำลังคิด...")
 
-            answer = ask_ai(user_message)
+            response = controller.process_message(
+                user_message,
+                platform="shopee",
+            )
 
-            print(f"AI: {answer}")
-            print("AI กำลังพูด...")
-
-            # voice_engine.py จะจัดการ Log ของระบบเสียงเอง
-            speak(answer)
-
-            print()
+            output_callback(
+                f"AI: {response.text}"
+            )
+            output_callback("")
 
         except AuthenticationError:
             logger.error("API Key ไม่ถูกต้อง")
-            print("เกิดข้อผิดพลาด: API Key ไม่ถูกต้อง")
+            output_callback(
+                "เกิดข้อผิดพลาด: API Key ไม่ถูกต้อง"
+            )
             break
 
         except RateLimitError:
-            logger.error("เครดิตหรือขีดจำกัด API ไม่เพียงพอ")
-            print(
+            logger.error(
+                "เครดิตหรือขีดจำกัด API ไม่เพียงพอ"
+            )
+            output_callback(
                 "เกิดข้อผิดพลาด: "
                 "กรุณาตรวจสอบเครดิตและ Usage Limit"
             )
             break
 
         except APIConnectionError:
-            logger.error("ไม่สามารถเชื่อมต่อ OpenAI ได้")
-            print(
+            logger.error(
+                "ไม่สามารถเชื่อมต่อ OpenAI ได้"
+            )
+            output_callback(
                 "เกิดข้อผิดพลาด: "
                 "กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต"
             )
@@ -74,7 +113,7 @@ def main() -> None:
                 "OpenAI API Error: %s",
                 error.status_code,
             )
-            print(
+            output_callback(
                 "เกิดข้อผิดพลาดจาก OpenAI API "
                 f"รหัส {error.status_code}"
             )
@@ -85,7 +124,20 @@ def main() -> None:
                 "เกิดข้อผิดพลาดระหว่างการทำงาน: %s",
                 error,
             )
-            print(f"เกิดข้อผิดพลาด: {error}")
+            output_callback(
+                f"เกิดข้อผิดพลาด: {error}"
+            )
+
+
+def main() -> None:
+    """Create production dependencies and run the console."""
+
+    from app.voice_engine import speak
+
+    controller = LiveCommerceController(
+        voice_callback=speak,
+    )
+    run_console(controller)
 
 
 if __name__ == "__main__":
