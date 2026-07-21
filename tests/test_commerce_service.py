@@ -1,6 +1,10 @@
 """Tests for CommerceService."""
 
-from app.services import CommerceService
+from app.llm.mock_provider import MockProvider
+from app.services import (
+    CommerceService,
+    ResponseGenerationService,
+)
 
 
 def test_product_message_returns_product_intent() -> None:
@@ -180,3 +184,67 @@ def test_follow_up_reuses_product_knowledge() -> None:
     assert response.metadata[
         "primary_product"
     ]["material"] == "กระดาษ"
+
+def test_optional_generation_returns_real_reply() -> None:
+    generation_service = ResponseGenerationService(
+        provider=MockProvider(),
+    )
+
+    service = CommerceService(
+        response_generation_service=(
+            generation_service
+        ),
+    )
+
+    response = service.process_message(
+        "รุ่น5040"
+    )
+
+    assert response.text != (
+        "CommerceService is ready."
+    )
+    assert "5040" in response.text
+    assert "กระดาษ" in response.text
+
+    assert response.metadata[
+        "generation_status"
+    ] == "generated"
+
+    assert response.metadata[
+        "status"
+    ] == "response_generated"
+
+    assert response.metadata[
+        "llm"
+    ]["matched_rule"] == "PRODUCT_CATALOG"
+
+    assert (
+        service.memory.latest_assistant_message()
+        == response.text
+    )
+
+
+def test_default_generation_remains_disabled() -> None:
+    service = CommerceService()
+
+    response = service.process_message(
+        "รุ่น5040"
+    )
+
+    assert response.text == (
+        "CommerceService is ready."
+    )
+
+    assert response.metadata[
+        "generation_status"
+    ] == "disabled"
+
+    assert response.metadata["llm"] is None
+    assert response.metadata[
+        "prompt_builder"
+    ] is None
+
+    assert (
+        service.memory.latest_assistant_message()
+        == ""
+    )

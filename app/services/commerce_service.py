@@ -19,6 +19,9 @@ from app.services.product_knowledge_service import (
     KnowledgeResult,
     ProductCatalogRetriever,
 )
+from app.services.response_generation_service import (
+    ResponseGenerationService,
+)
 from app.services.search_planning_service import (
     SearchPlanningResult,
     SearchPlanningService,
@@ -50,6 +53,9 @@ class CommerceService:
         knowledge_retriever: (
             ProductCatalogRetriever | None
         ) = None,
+        response_generation_service: (
+            ResponseGenerationService | None
+        ) = None,
     ) -> None:
         """Initialize commerce application services."""
 
@@ -64,6 +70,10 @@ class CommerceService:
         self.knowledge_retriever = (
             knowledge_retriever
             or ProductCatalogRetriever()
+        )
+
+        self.response_generation_service = (
+            response_generation_service
         )
     def prepare_pipeline(
         self,
@@ -185,12 +195,46 @@ class CommerceService:
         knowledge = pipeline.knowledge
         primary_product = knowledge.primary_product
 
+        response_text = "CommerceService is ready."
+        generation_status = "disabled"
+        llm_data = None
+        prompt_data = None
+        response_status = "intent_analyzed"
+
+        if self.response_generation_service is not None:
+            generation = (
+                self.response_generation_service.generate(
+                    customer_message=message,
+                    platform=selected_platform,
+                    knowledge=knowledge,
+                    search_plan=(
+                        planning.resolved_search_plan
+                    ),
+                    conversation_context=(
+                        self.memory.build_context_text()
+                    ),
+                    product_attribute=(
+                        pipeline.product_attribute.value
+                    ),
+                )
+            )
+
+            response_text = generation.response.text
+            generation_status = "generated"
+            llm_data = generation.response.to_dict()
+            prompt_data = generation.prompt.to_dict()
+            response_status = "response_generated"
+
+            self.memory.add_assistant(
+                response_text
+            )
+
         elapsed_ms = (
             perf_counter() - started_at
         ) * 1000
 
         return CommerceResponse(
-            text="CommerceService is ready.",
+            text=response_text,
             allowed=True,
             risk_score=0.0,
             compliance_score=100.0,
@@ -221,6 +265,11 @@ class CommerceService:
                     if primary_product is not None
                     else None
                 ),
-                "status": "intent_analyzed",
+                "generation_status": (
+                    generation_status
+                ),
+                "llm": llm_data,
+                "prompt_builder": prompt_data,
+                "status": response_status,
             },
         )
