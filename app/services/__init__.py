@@ -1,6 +1,9 @@
 """Application services."""
 
-from .commerce_service import CommerceService
+from .commerce_service import (
+    CommercePipelineResult,
+    CommerceService,
+)
 from .models import (
     CommerceContext,
     CommerceResponse,
@@ -17,6 +20,7 @@ from .search_planning_service import (
 
 __all__ = [
     "CommerceContext",
+    "CommercePipelineResult",
     "CommerceResponse",
     "CommerceService",
     "KnowledgeResult",

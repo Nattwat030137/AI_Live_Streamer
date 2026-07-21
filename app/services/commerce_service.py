@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from time import perf_counter
 
 from app.intent_engine import Intent, detect_intent
@@ -15,11 +16,23 @@ from app.services.models import (
     CommerceResponse,
 )
 from app.services.product_knowledge_service import (
+    KnowledgeResult,
     ProductCatalogRetriever,
 )
 from app.services.search_planning_service import (
+    SearchPlanningResult,
     SearchPlanningService,
 )
+
+
+@dataclass(slots=True)
+class CommercePipelineResult:
+    """Typed result prepared by the commerce pipeline."""
+
+    intent: Intent
+    product_attribute: ProductAttribute
+    planning: SearchPlanningResult
+    knowledge: KnowledgeResult
 
 
 class CommerceService:
@@ -52,6 +65,66 @@ class CommerceService:
             knowledge_retriever
             or ProductCatalogRetriever()
         )
+    def prepare_pipeline(
+        self,
+        *,
+        customer_message: str,
+        platform: str = "shopee",
+    ) -> CommercePipelineResult:
+        """Prepare typed analysis, search, and knowledge data."""
+
+        message = customer_message.strip()
+
+        if not message:
+            raise ValueError(
+                "Cannot prepare commerce pipeline "
+                "for an empty customer message."
+            )
+
+        selected_platform = (
+            platform.strip().lower() or "shopee"
+        )
+
+        intent = detect_intent(message)
+        product_attribute = detect_product_attribute(
+            message
+        )
+
+        planning = self.search_planning_service.prepare(
+            customer_message=message,
+        )
+
+        knowledge = self.knowledge_retriever.retrieve(
+            planning.resolved_search_plan
+        )
+
+        resolved_models = list(
+            planning.resolved_models
+        )
+
+        self.memory.add_customer(
+            message,
+            metadata={
+                "models": resolved_models,
+                "intent": intent.value,
+                "product_attribute": (
+                    product_attribute.value
+                ),
+                "platform": selected_platform,
+                "knowledge_found": knowledge.found,
+            },
+        )
+
+        self.memory.update_context(
+            intent=intent.value,
+        )
+
+        return CommercePipelineResult(
+            intent=intent,
+            product_attribute=product_attribute,
+            planning=planning,
+            knowledge=knowledge,
+        )
 
     def prepare_context(
         self,
@@ -61,25 +134,15 @@ class CommerceService:
     ) -> CommerceContext:
         """Prepare typed intent and product-attribute context."""
 
-        response = self.process_message(
+        pipeline = self.prepare_pipeline(
             customer_message=message,
             platform=platform,
         )
 
-        if not response.allowed:
-            raise ValueError(
-                "Cannot prepare commerce context "
-                "for an empty customer message."
-            )
-
         return CommerceContext(
-            intent=Intent(
-                response.metadata["intent"]
-            ),
-            product_attribute=ProductAttribute(
-                response.metadata[
-                    "product_attribute"
-                ]
+            intent=pipeline.intent,
+            product_attribute=(
+                pipeline.product_attribute
             ),
         )
     def process_message(
@@ -87,9 +150,7 @@ class CommerceService:
         customer_message: str,
         platform: str = "shopee",
     ) -> CommerceResponse:
-        """
-        Analyze a message and prepare search and knowledge data.
-        """
+        """Process a message and return serializable metadata."""
 
         started_at = perf_counter()
 
@@ -115,50 +176,15 @@ class CommerceService:
                 },
             )
 
-        intent = detect_intent(message)
-        product_attribute = detect_product_attribute(
-            message
+        pipeline = self.prepare_pipeline(
+            customer_message=message,
+            platform=selected_platform,
         )
 
-        planning_result = (
-            self.search_planning_service.prepare(
-                customer_message=message,
-            )
-        )
+        planning = pipeline.planning
+        knowledge = pipeline.knowledge
+        primary_product = knowledge.primary_product
 
-        resolved_models = list(
-            planning_result.resolved_models
-        )
-
-        knowledge_result = (
-            self.knowledge_retriever.retrieve(
-                planning_result.resolved_search_plan
-            )
-        )
-
-        knowledge_data = knowledge_result.to_dict()
-        primary_product = (
-            knowledge_result.primary_product
-        )
-
-        self.memory.add_customer(
-            message,
-            metadata={
-                "models": resolved_models,
-                "intent": intent.value,
-                "product_attribute": (
-                    product_attribute.value
-                ),
-                "platform": selected_platform,
-                "knowledge_found": (
-                    knowledge_result.found
-                ),
-            },
-        )
-
-        self.memory.update_context(
-            intent=intent.value,
-        )
         elapsed_ms = (
             perf_counter() - started_at
         ) * 1000
@@ -172,22 +198,22 @@ class CommerceService:
             metadata={
                 "customer_message": message,
                 "platform": selected_platform,
-                "intent": intent.value,
+                "intent": pipeline.intent.value,
                 "product_attribute": (
-                    product_attribute.value
+                    pipeline.product_attribute.value
                 ),
-                "resolved_models": resolved_models,
+                "resolved_models": list(
+                    planning.resolved_models
+                ),
                 "search_plan": (
-                    planning_result.search_plan_data
+                    planning.search_plan_data
                 ),
                 "search_status": "prepared",
-                "knowledge": knowledge_data,
-                "knowledge_found": (
-                    knowledge_result.found
-                ),
+                "knowledge": knowledge.to_dict(),
+                "knowledge_found": knowledge.found,
                 "knowledge_status": (
                     "found"
-                    if knowledge_result.found
+                    if knowledge.found
                     else "not_found"
                 ),
                 "primary_product": (

@@ -223,6 +223,61 @@ def test_greeting(
 
     assert "สวัสดี" in report.final_reply
 
+def test_demo_and_commerce_share_memory(
+    demo: BakeryDemo,
+) -> None:
+    """ยืนยันว่า Demo และ CommerceService ใช้ Memory เดียวกัน."""
+
+    assert (
+        demo.commerce_service.memory
+        is demo.memory
+    )
+
+
+def test_knowledge_is_retrieved_once(
+    demo: BakeryDemo,
+    monkeypatch,
+) -> None:
+    """ยืนยันว่า Scenario หนึ่งรายการค้น Knowledge ครั้งเดียว."""
+
+    retriever = (
+        demo.commerce_service.knowledge_retriever
+    )
+    original_retrieve = retriever.retrieve
+    call_count = 0
+
+    def counting_retrieve(plan):
+        nonlocal call_count
+
+        call_count += 1
+
+        return original_retrieve(
+            plan
+        )
+
+    monkeypatch.setattr(
+        retriever,
+        "retrieve",
+        counting_retrieve,
+    )
+
+    scenario = DemoScenario(
+        scenario_id="single-retrieval-5040",
+        title="Single Knowledge Retrieval",
+        customer_message="รุ่น5040",
+        platform="shopee",
+        expected_rule="PRODUCT_CATALOG",
+    )
+
+    report = demo.run_scenario(
+        scenario
+    )
+
+    assert report.matched_rule == (
+        "PRODUCT_CATALOG"
+    )
+    assert call_count == 1
+
 
 def main() -> None:
     """รัน Bakery Demo SQLite Integration Tests."""

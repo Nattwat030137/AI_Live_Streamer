@@ -7,10 +7,7 @@ from time import perf_counter
 from dataclasses import dataclass
 from typing import Any
 
-from app.services import (
-    CommerceService,
-    SearchPlanningService,
-)
+from app.services import CommerceService
 from app.memory.conversation import ConversationMemory
 from app.memory.product_slots import ProductSlots
 from app.policies.engine import GovernanceEngine
@@ -18,7 +15,6 @@ from app.policies.registry import PolicyRegistry
 from app.llm.factory import create_llm_provider
 from app.llm.types import LLMRequest
 from app.prompt.builder import CommercePromptBuilder
-from demo.knowledge_retriever import ProductCatalogRetriever
 from demo.renderer import (
     ConsoleRenderer,
     DemoReport,
@@ -150,6 +146,7 @@ class PreparedContext:
     resolved_search_plan: Any
     search_plan_data: dict[str, Any]
     product_attribute: Any
+    knowledge_result: Any
 
 class BakeryDemo:
     """ประสานงานส่วนต่าง ๆ ของ Bakery Demo."""
@@ -179,10 +176,6 @@ class BakeryDemo:
             CommercePromptBuilder()
         )
 
-        self.knowledge_retriever = (
-            ProductCatalogRetriever()
-        )
-
         self.registry = PolicyRegistry()
 
         self.governance = GovernanceEngine(
@@ -190,66 +183,44 @@ class BakeryDemo:
         )
         self.memory = ConversationMemory()
         self.product_slots = ProductSlots()
-        self.commerce_service = CommerceService()
-        self.search_planning = SearchPlanningService(
+        self.commerce_service = CommerceService(
             memory=self.memory,
         )
-
     def _prepare_context(
         self,
         scenario: DemoScenario,
     ) -> PreparedContext:
-        """
-        เตรียม Memory, Reference, Search Plan
-        และ Product Attribute สำหรับข้อความลูกค้า.
-        """
+        """Prepare the shared commerce pipeline once."""
 
-        customer_message = (
-            scenario.customer_message
-        )
-
-        self.memory.add_customer(
-            customer_message
-        )
-
-        planning = self.search_planning.prepare(
-            customer_message=customer_message,
-            max_tasks=10,
-            graph_limit_per_task=4,
-        )
-
-        search_plan = planning.search_plan
-        resolved_models = planning.resolved_models
-        resolved_search_plan = (
-            planning.resolved_search_plan
-        )
-        search_plan_data = planning.search_plan_data
-
-        commerce_context = (
-            self.commerce_service.prepare_context(
-                message=customer_message,
+        pipeline = (
+            self.commerce_service.prepare_pipeline(
+                customer_message=(
+                    scenario.customer_message
+                ),
                 platform=scenario.platform,
             )
         )
 
-        pre_intent = commerce_context.intent
-
-        product_attribute = (
-            commerce_context.product_attribute
-        )
-
-        self.memory.update_context(
-            intent=pre_intent.value,
-        )
+        planning = pipeline.planning
 
         return PreparedContext(
-    resolved_models=resolved_models,
-    search_plan=search_plan,
-    resolved_search_plan=resolved_search_plan,
-    search_plan_data=search_plan_data,
-    product_attribute=product_attribute,
-)
-
+            resolved_models=list(
+                planning.resolved_models
+            ),
+            search_plan=planning.search_plan,
+            resolved_search_plan=(
+                planning.resolved_search_plan
+            ),
+            search_plan_data=(
+                planning.search_plan_data
+            ),
+            product_attribute=(
+                pipeline.product_attribute
+            ),
+            knowledge_result=(
+                pipeline.knowledge
+            ),
+        )
     def run_scenario(
         self,
         scenario: DemoScenario,
@@ -281,9 +252,7 @@ class BakeryDemo:
         )
 
         knowledge_result = (
-            self.knowledge_retriever.retrieve(
-                resolved_search_plan
-            )
+            prepared.knowledge_result
         )
 
         primary_product = (
