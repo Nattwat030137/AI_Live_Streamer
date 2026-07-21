@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services import (
+    CommercePipelineResult,
     CommerceService,
     ResponseGenerationService,
 )
@@ -142,6 +143,7 @@ STRATEGY_BY_RULE: dict[str, str] = {
 
 @dataclass(slots=True)
 class PreparedContext:
+    pipeline: CommercePipelineResult
     resolved_models: list[str]
     search_plan: Any
     resolved_search_plan: Any
@@ -212,6 +214,7 @@ class BakeryDemo:
         planning = pipeline.planning
 
         return PreparedContext(
+            pipeline=pipeline,
             resolved_models=list(
                 planning.resolved_models
             ),

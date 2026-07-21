@@ -49,6 +49,31 @@ def test_commerce_dependencies_are_shared(
     )
 
 
+def test_prepared_context_preserves_pipeline(
+    demo: BakeryDemo,
+) -> None:
+    scenario = DemoScenario(
+        scenario_id="prepared-context-test",
+        title="Prepared Context Test",
+        customer_message="รุ่น 5040",
+        platform="shopee",
+        expected_rule="PRODUCT_CATALOG",
+    )
+
+    prepared = demo._prepare_context(
+        scenario
+    )
+
+    assert prepared.pipeline.customer_message == (
+        "รุ่น 5040"
+    )
+    assert prepared.pipeline.platform == "shopee"
+    assert (
+        prepared.knowledge_result
+        is prepared.pipeline.knowledge
+    )
+
+
 def test_product_5040(
     demo: BakeryDemo,
 ) -> None:
