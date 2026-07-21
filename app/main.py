@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 
 from openai import (
@@ -18,6 +19,54 @@ from core.logger import logger
 
 InputCallback = Callable[[str], str]
 OutputCallback = Callable[[str], None]
+
+
+def resolve_voice_enabled(
+    value: str | None = None,
+) -> bool:
+    """Resolve whether live voice output is enabled."""
+
+    raw_value = (
+        value
+        if value is not None
+        else os.getenv(
+            "VOICE_ENABLED",
+            "true",
+        )
+    )
+
+    return raw_value.strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def create_live_controller(
+    *,
+    provider_name: str | None = None,
+    voice_enabled: bool | None = None,
+) -> LiveCommerceController:
+    """Create the controller used by the console entry point."""
+
+    resolved_voice_enabled = (
+        resolve_voice_enabled()
+        if voice_enabled is None
+        else voice_enabled
+    )
+
+    voice_callback = None
+
+    if resolved_voice_enabled:
+        from app.voice_engine import speak
+
+        voice_callback = speak
+
+    return LiveCommerceController(
+        provider_name=provider_name,
+        voice_callback=voice_callback,
+    )
 
 
 def run_console(
@@ -132,11 +181,7 @@ def run_console(
 def main() -> None:
     """Create production dependencies and run the console."""
 
-    from app.voice_engine import speak
-
-    controller = LiveCommerceController(
-        voice_callback=speak,
-    )
+    controller = create_live_controller()
     run_console(controller)
 
 
