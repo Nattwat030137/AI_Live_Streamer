@@ -372,3 +372,42 @@ def test_prepared_pipeline_preserves_request() -> None:
 
     assert pipeline.customer_message == "รุ่น 5040"
     assert pipeline.platform == "shopee"
+
+
+def test_prepared_pipeline_generates_without_duplicate_customer() -> None:
+    service = CommerceService(
+        response_generation_service=(
+            ResponseGenerationService(
+                provider=MockProvider(),
+            )
+        ),
+        governance_engine=GovernanceEngine(),
+    )
+
+    pipeline = service.prepare_pipeline(
+        customer_message="รุ่น 5040",
+        platform="shopee",
+    )
+
+    assert len(service.memory.turns) == 1
+
+    response = service.process_prepared_pipeline(
+        pipeline,
+        product_context="PRODUCT-CONTEXT-TEST",
+        metadata={
+            "scenario_id": "prepared-test",
+        },
+    )
+
+    assert response.metadata[
+        "status"
+    ] == "governance_evaluated"
+
+    assert len(service.memory.turns) == 2
+    assert [
+        turn.role
+        for turn in service.memory.turns
+    ] == [
+        "customer",
+        "assistant",
+    ]

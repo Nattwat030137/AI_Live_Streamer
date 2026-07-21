@@ -168,6 +168,24 @@ class CommerceService:
                 pipeline.product_attribute
             ),
         )
+
+    def process_prepared_pipeline(
+        self,
+        pipeline: CommercePipelineResult,
+        *,
+        product_context: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> CommerceResponse:
+        """Generate a response from a prepared pipeline."""
+
+        return self.process_message(
+            pipeline.customer_message,
+            platform=pipeline.platform,
+            product_context=product_context,
+            metadata=metadata,
+            _prepared_pipeline=pipeline,
+        )
+
     def process_message(
         self,
         customer_message: str,
@@ -175,6 +193,9 @@ class CommerceService:
         *,
         product_context: str = "",
         metadata: dict[str, Any] | None = None,
+        _prepared_pipeline: (
+            CommercePipelineResult | None
+        ) = None,
     ) -> CommerceResponse:
         """Process a message and return serializable metadata."""
 
@@ -205,10 +226,15 @@ class CommerceService:
                 },
             )
 
-        pipeline = self.prepare_pipeline(
-            customer_message=message,
-            platform=selected_platform,
-        )
+        if _prepared_pipeline is None:
+            pipeline = self.prepare_pipeline(
+                customer_message=message,
+                platform=selected_platform,
+            )
+        else:
+            pipeline = _prepared_pipeline
+            message = pipeline.customer_message
+            selected_platform = pipeline.platform
 
         planning = pipeline.planning
         knowledge = pipeline.knowledge
