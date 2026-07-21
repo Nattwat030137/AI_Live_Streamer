@@ -7,14 +7,15 @@ from time import perf_counter
 from dataclasses import dataclass
 from typing import Any
 
-from app.services import CommerceService
+from app.services import (
+    CommerceService,
+    ResponseGenerationService,
+)
 from app.memory.conversation import ConversationMemory
 from app.memory.product_slots import ProductSlots
 from app.policies.engine import GovernanceEngine
 from app.policies.registry import PolicyRegistry
 from app.llm.factory import create_llm_provider
-from app.llm.types import LLMRequest
-from app.prompt.builder import CommercePromptBuilder
 from demo.renderer import (
     ConsoleRenderer,
     DemoReport,
@@ -109,7 +110,7 @@ EMOTION_BY_RULE: dict[str, tuple[str, int]] = {
 
 
 STRATEGY_BY_RULE: dict[str, str] = {
-    
+
         "PRODUCT_CATALOG_COMPATIBLE_BAG": (
         "answer_compatible_packaging"
     ),
@@ -170,11 +171,13 @@ class BakeryDemo:
             **resolved_provider_options,
         )
 
-        self.renderer = ConsoleRenderer()
-
-        self.prompt_builder = (
-            CommercePromptBuilder()
+        self.response_generation = (
+            ResponseGenerationService(
+                provider=self.llm,
+            )
         )
+
+        self.renderer = ConsoleRenderer()
 
         self.registry = PolicyRegistry()
 
@@ -228,7 +231,7 @@ class BakeryDemo:
         """ประมวลผล Scenario หนึ่งรายการ."""
 
         started_at = perf_counter()
-        
+
         prepared = self._prepare_context(
             scenario
         )
@@ -276,8 +279,8 @@ class BakeryDemo:
                     ),
                 },
             )
-        prompt_result = (
-            self.prompt_builder.build(
+        generation = (
+            self.response_generation.generate(
                 customer_message=(
                     scenario.customer_message
                 ),
@@ -290,44 +293,25 @@ class BakeryDemo:
                 product_context=(
                     self.product_slots.build_context_text()
                 ),
+                product_attribute=(
+                    product_attribute.value
+                ),
+                metadata={
+                    "scenario_id": (
+                        scenario.scenario_id
+                    ),
+                },
             )
         )
 
+        prompt_result = generation.prompt
         prompt = prompt_result.prompt
-       
-        llm_request = LLMRequest(
-    prompt=prompt,
-    customer_message=(
-        scenario.customer_message
-    ),
-    system_message=(
-        prompt_result.system_message
-    ),
-    metadata={
-        "knowledge": (
-            knowledge_result
-        ),
-        "product_attribute": (
-            product_attribute.value
-        ),
-        "scenario_id": (
-            scenario.scenario_id
-        ),
-        "platform": (
-            scenario.platform
-        ),
-        "search_plan": (
-            search_plan_data
-        ),
-        "prompt_builder": (
-            prompt_result.to_dict()
-        ),
-    },
-)
+        llm_response = generation.response
 
-        llm_response = self.llm.generate(
-            llm_request
+        self.memory.add_assistant(
+            llm_response.text
         )
+
         self.memory.add_assistant(
     llm_response.text
 )

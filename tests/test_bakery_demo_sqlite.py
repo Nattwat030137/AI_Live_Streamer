@@ -278,6 +278,47 @@ def test_knowledge_is_retrieved_once(
     )
     assert call_count == 1
 
+def test_response_is_generated_once(
+    demo: BakeryDemo,
+    monkeypatch,
+) -> None:
+    """ยืนยันว่า Scenario หนึ่งรายการสร้างคำตอบครั้งเดียว."""
+
+    service = demo.response_generation
+    original_generate = service.generate
+    call_count = 0
+
+    def counting_generate(**kwargs):
+        nonlocal call_count
+
+        call_count += 1
+
+        return original_generate(
+            **kwargs
+        )
+
+    monkeypatch.setattr(
+        service,
+        "generate",
+        counting_generate,
+    )
+
+    scenario = DemoScenario(
+        scenario_id="single-response-generation",
+        title="Single Response Generation",
+        customer_message="สวัสดีครับ",
+        platform="shopee",
+        expected_rule="GREETING",
+    )
+
+    report = demo.run_scenario(
+        scenario
+    )
+
+    assert report.matched_rule == "GREETING"
+    assert call_count == 1
+    assert service.provider is demo.llm
+
 
 def main() -> None:
     """รัน Bakery Demo SQLite Integration Tests."""
