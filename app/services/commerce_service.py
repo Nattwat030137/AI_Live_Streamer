@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
+from typing import Any
 
 from app.policies.engine import GovernanceEngine
 from app.intent_engine import Intent, detect_intent
@@ -167,6 +168,9 @@ class CommerceService:
         self,
         customer_message: str,
         platform: str = "shopee",
+        *,
+        product_context: str = "",
+        metadata: dict[str, Any] | None = None,
     ) -> CommerceResponse:
         """Process a message and return serializable metadata."""
 
@@ -175,6 +179,9 @@ class CommerceService:
         message = customer_message.strip()
         selected_platform = (
             platform.strip().lower() or "shopee"
+        )
+        request_metadata = dict(
+            metadata or {}
         )
 
         if not message:
@@ -226,8 +233,12 @@ class CommerceService:
                     conversation_context=(
                         self.memory.build_context_text()
                     ),
+                    product_context=product_context,
                     product_attribute=(
                         pipeline.product_attribute.value
+                    ),
+                    metadata=(
+                        request_metadata or None
                     ),
                 )
             )
@@ -245,6 +256,7 @@ class CommerceService:
                         platform=selected_platform,
                         customer_message=message,
                         metadata={
+                            **request_metadata,
                             "intent": (
                                 pipeline.intent.value
                             ),
@@ -292,6 +304,7 @@ class CommerceService:
             metadata={
                 "customer_message": message,
                 "platform": selected_platform,
+                "request_metadata": request_metadata,
                 "intent": pipeline.intent.value,
                 "product_attribute": (
                     pipeline.product_attribute.value

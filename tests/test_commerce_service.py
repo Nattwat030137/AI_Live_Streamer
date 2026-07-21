@@ -312,3 +312,51 @@ def test_optional_governance_evaluates_generated_reply() -> None:
         service.memory.latest_assistant_message()
         == response.text
     )
+
+
+def test_request_context_reaches_pipeline() -> None:
+    generation_service = ResponseGenerationService(
+        provider=MockProvider(),
+    )
+    request_metadata = {
+        "scenario_id": "scenario-test",
+        "intent": "caller-value",
+    }
+
+    service = CommerceService(
+        response_generation_service=(
+            generation_service
+        ),
+        governance_engine=GovernanceEngine(),
+    )
+
+    response = service.process_message(
+        "รุ่น 5040",
+        product_context="PRODUCT-CONTEXT-TEST",
+        metadata=request_metadata,
+    )
+
+    assert response.metadata[
+        "request_metadata"
+    ] == request_metadata
+
+    prompt = response.metadata[
+        "prompt_builder"
+    ]["prompt"]
+
+    assert "PRODUCT-CONTEXT-TEST" in prompt
+
+    governance_metadata = response.metadata[
+        "governance"
+    ]["metadata"]["context"]["metadata"]
+
+    assert governance_metadata[
+        "scenario_id"
+    ] == "scenario-test"
+
+    assert governance_metadata["intent"] == "product"
+    assert governance_metadata[
+        "product_attribute"
+    ] == "general"
+
+    assert request_metadata["intent"] == "caller-value"
