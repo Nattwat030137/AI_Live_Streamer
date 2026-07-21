@@ -188,7 +188,12 @@ class BakeryDemo:
         self.product_slots = ProductSlots()
         self.commerce_service = CommerceService(
             memory=self.memory,
+            response_generation_service=(
+                self.response_generation
+            ),
+            governance_engine=self.governance,
         )
+
     def _prepare_context(
         self,
         scenario: DemoScenario,

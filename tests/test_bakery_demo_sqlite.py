@@ -34,6 +34,20 @@ def assert_common_report(
         dict,
     )
 
+def test_commerce_dependencies_are_shared(
+    demo: BakeryDemo,
+) -> None:
+    assert (
+        demo.commerce_service
+        .response_generation_service
+        is demo.response_generation
+    )
+
+    assert (
+        demo.commerce_service.governance_engine
+        is demo.governance
+    )
+
 
 def test_product_5040(
     demo: BakeryDemo,
