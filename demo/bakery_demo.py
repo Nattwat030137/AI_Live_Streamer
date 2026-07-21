@@ -146,7 +146,6 @@ class PreparedContext:
     pipeline: CommercePipelineResult
     resolved_models: list[str]
     search_plan: Any
-    resolved_search_plan: Any
     search_plan_data: dict[str, Any]
     product_attribute: Any
     knowledge_result: Any
@@ -219,9 +218,6 @@ class BakeryDemo:
                 planning.resolved_models
             ),
             search_plan=planning.search_plan,
-            resolved_search_plan=(
-                planning.resolved_search_plan
-            ),
             search_plan_data=(
                 planning.search_plan_data
             ),
@@ -248,10 +244,6 @@ class BakeryDemo:
 
         resolved_models = (
             prepared.resolved_models
-        )
-
-        resolved_search_plan = (
-            prepared.resolved_search_plan
         )
 
         search_plan_data = (
@@ -495,71 +487,6 @@ class BakeryDemo:
             self.renderer.render(
                 report
             )
-
-    @staticmethod
-    def _build_prompt(
-        *,
-        scenario: DemoScenario,
-        search_plan_data: dict[str, Any],
-    ) -> str:
-        """สร้าง Prompt พร้อม Search Plan."""
-
-        model_text = (
-            ", ".join(
-                search_plan_data[
-                    "extracted_models"
-                ]
-            )
-            or "ไม่พบ"
-        )
-
-        token_text = (
-            ", ".join(
-                search_plan_data[
-                    "extracted_tokens"
-                ]
-            )
-            or "ไม่พบ"
-        )
-
-        top_tasks = (
-            search_plan_data[
-                "tasks"
-            ][:5]
-        )
-
-        task_lines = [
-            (
-                f"- {task['keyword']} "
-                f"(priority="
-                f"{task['priority']}, "
-                f"source="
-                f"{task['source']})"
-            )
-            for task in top_tasks
-        ]
-
-        task_text = (
-            "\n".join(
-                task_lines
-            )
-            or "- ไม่พบ Search Task"
-        )
-
-        return (
-            "คุณคือ AI Sales Agent ของร้าน "
-            "Bakery D'Ver\n"
-            f"Platform: {scenario.platform}\n"
-            "ตอบอย่างสุภาพ กระชับ "
-            "และไม่เดาราคา สต็อก "
-            "หรือโปรโมชั่น\n"
-            f"Detected Models: {model_text}\n"
-            f"Detected Tokens: {token_text}\n"
-            "Search Tasks:\n"
-            f"{task_text}\n"
-            "Customer Message: "
-            f"{scenario.customer_message}"
-        )
 
 
 def print_usage() -> None:
