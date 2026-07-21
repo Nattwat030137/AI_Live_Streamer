@@ -13,6 +13,10 @@ from .product_knowledge_service import (
     ProductCatalogRetriever,
     ProductKnowledge,
 )
+from .response_generation_service import (
+    ResponseGenerationResult,
+    ResponseGenerationService,
+)
 from .search_planning_service import (
     SearchPlanningResult,
     SearchPlanningService,
@@ -26,6 +30,8 @@ __all__ = [
     "KnowledgeResult",
     "ProductCatalogRetriever",
     "ProductKnowledge",
+    "ResponseGenerationResult",
+    "ResponseGenerationService",
     "SearchPlanningResult",
     "SearchPlanningService",
 ]
