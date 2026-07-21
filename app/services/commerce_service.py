@@ -319,8 +319,8 @@ class CommerceService:
                     generation_status
                 ),
                 "governance_status": (
-                 governance_status
-                 ),
+                    governance_status
+                ),
                 "governance": governance_data,
                 "llm": llm_data,
                 "prompt_builder": prompt_data,

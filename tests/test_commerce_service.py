@@ -1,6 +1,7 @@
 """Tests for CommerceService."""
 
 from app.llm.mock_provider import MockProvider
+from app.policies.engine import GovernanceEngine
 from app.services import (
     CommerceService,
     ResponseGenerationService,
@@ -215,6 +216,18 @@ def test_optional_generation_returns_real_reply() -> None:
     ] == "response_generated"
 
     assert response.metadata[
+        "governance_status"
+    ] == "disabled"
+
+    assert response.metadata[
+        "governance"
+    ] is None
+
+    assert response.allowed is True
+    assert response.risk_score == 0.0
+    assert response.compliance_score == 100.0
+
+    assert response.metadata[
         "llm"
     ]["matched_rule"] == "PRODUCT_CATALOG"
 
@@ -247,4 +260,55 @@ def test_default_generation_remains_disabled() -> None:
     assert (
         service.memory.latest_assistant_message()
         == ""
+    )
+
+
+def test_optional_governance_evaluates_generated_reply() -> None:
+    generation_service = ResponseGenerationService(
+        provider=MockProvider(),
+    )
+
+    service = CommerceService(
+        response_generation_service=(
+            generation_service
+        ),
+        governance_engine=GovernanceEngine(),
+    )
+
+    response = service.process_message(
+        "รุ่น 5040"
+    )
+
+    assert response.allowed is True
+    assert response.risk_score == 0.0
+    assert response.compliance_score == 100.0
+
+    assert response.metadata[
+        "generation_status"
+    ] == "generated"
+
+    assert response.metadata[
+        "governance_status"
+    ] == "evaluated"
+
+    assert response.metadata[
+        "status"
+    ] == "governance_evaluated"
+
+    governance = response.metadata["governance"]
+
+    assert governance is not None
+    assert governance["allowed"] is True
+    assert governance["risk_score"] == 0
+    assert governance["compliance_score"] == 100
+    assert governance["platform"] == "shopee"
+
+    assert (
+        governance["sanitized_reply"]
+        == response.text
+    )
+
+    assert (
+        service.memory.latest_assistant_message()
+        == response.text
     )
