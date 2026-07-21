@@ -128,4 +128,4 @@ class ResponseGenerationService:
             prompt=prompt_result,
             request=request,
             response=response,
-        )    
+        )
