@@ -354,6 +354,14 @@ def test_request_context_reaches_pipeline() -> None:
         "scenario_id"
     ] == "scenario-test"
 
+    assert governance_metadata[
+        "mock_rule"
+    ] == "PRODUCT_CATALOG"
+
+    assert governance_metadata[
+        "search_plan"
+    ] == response.metadata["search_plan"]
+
     assert governance_metadata["intent"] == "product"
     assert governance_metadata[
         "product_attribute"

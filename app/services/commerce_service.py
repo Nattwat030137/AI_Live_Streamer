@@ -287,6 +287,14 @@ class CommerceService:
                         customer_message=message,
                         metadata={
                             **request_metadata,
+                            "mock_rule": (
+                                generation
+                                .response
+                                .matched_rule
+                            ),
+                            "search_plan": (
+                                planning.search_plan_data
+                            ),
                             "intent": (
                                 pipeline.intent.value
                             ),
