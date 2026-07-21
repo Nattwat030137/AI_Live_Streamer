@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 from demo.bakery_demo import BakeryDemo
 from demo.sample_data import DemoScenario
 
@@ -33,6 +35,7 @@ def assert_common_report(
         governance_data,
         dict,
     )
+
 
 def test_commerce_dependencies_are_shared(
     demo: BakeryDemo,
@@ -72,6 +75,37 @@ def test_prepared_context_preserves_pipeline(
         prepared.knowledge_result
         is prepared.pipeline.knowledge
     )
+
+
+def test_run_scenario_uses_commerce_response(
+    demo: BakeryDemo,
+) -> None:
+    original_process = (
+        demo.commerce_service
+        .process_prepared_pipeline
+    )
+    process_spy = Mock(
+        wraps=original_process,
+    )
+    demo.commerce_service.process_prepared_pipeline = (
+        process_spy
+    )
+
+    scenario = DemoScenario(
+        scenario_id="commerce-response-test",
+        title="Commerce Response Test",
+        customer_message="รุ่น 5040",
+        platform="shopee",
+        expected_rule="PRODUCT_CATALOG",
+    )
+
+    report = demo.run_scenario(
+        scenario
+    )
+
+    process_spy.assert_called_once()
+    assert report.matched_rule == "PRODUCT_CATALOG"
+    assert report.governance_allowed is True
 
 
 def test_product_5040(

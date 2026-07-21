@@ -287,22 +287,14 @@ class BakeryDemo:
                     ),
                 },
             )
-        generation = (
-            self.response_generation.generate(
-                customer_message=(
-                    scenario.customer_message
-                ),
-                platform=scenario.platform,
-                knowledge=knowledge_result,
-                search_plan=resolved_search_plan,
-                conversation_context=(
-                    self.memory.build_context_text()
-                ),
+
+        commerce_response = (
+            self.commerce_service
+            .process_prepared_pipeline(
+                prepared.pipeline,
                 product_context=(
-                    self.product_slots.build_context_text()
-                ),
-                product_attribute=(
-                    product_attribute.value
+                    self.product_slots
+                    .build_context_text()
                 ),
                 metadata={
                     "scenario_id": (
@@ -312,38 +304,43 @@ class BakeryDemo:
             )
         )
 
-        prompt_result = generation.prompt
-        prompt = prompt_result.prompt
-        llm_response = generation.response
-
-        self.memory.add_assistant(
-            llm_response.text
+        llm_data = commerce_response.metadata[
+            "llm"
+        ]
+        prompt_data = commerce_response.metadata[
+            "prompt_builder"
+        ]
+        governance_data = (
+            commerce_response.metadata[
+                "governance"
+            ]
         )
 
-        governance_result = (
-            self.governance.evaluate_reply(
-                reply=llm_response.text,
-                platform=scenario.platform,
-                customer_message=(
-                    scenario.customer_message
-                ),
-                metadata={
-                    "scenario_id": (
-                        scenario.scenario_id
-                    ),
-                    "mock_rule": (
-                        llm_response.matched_rule
-                    ),
-                    "search_plan": (
-                        search_plan_data
-                    ),
-                },
+        if not isinstance(llm_data, dict):
+            raise RuntimeError(
+                "Commerce response is missing LLM data."
             )
+
+        if not isinstance(prompt_data, dict):
+            raise RuntimeError(
+                "Commerce response is missing prompt data."
+            )
+
+        if not isinstance(governance_data, dict):
+            raise RuntimeError(
+                "Commerce response is missing governance data."
+            )
+
+        prompt = str(prompt_data["prompt"])
+        llm_reply = str(llm_data["text"])
+        llm_model = str(llm_data["model"])
+        matched_rule = str(
+            llm_data["matched_rule"]
         )
 
         intent, intent_score = (
             INTENT_BY_RULE.get(
-                llm_response.matched_rule,
+                matched_rule,
                 (
                     "unknown",
                     0,
@@ -353,7 +350,7 @@ class BakeryDemo:
 
         emotion, emotion_score = (
             EMOTION_BY_RULE.get(
-                llm_response.matched_rule,
+                matched_rule,
                 (
                     "neutral",
                     0,
@@ -362,12 +359,12 @@ class BakeryDemo:
         )
 
         strategy = STRATEGY_BY_RULE.get(
-            llm_response.matched_rule,
+            matched_rule,
             "answer",
         )
 
         self.memory.update_context(
-            topic=llm_response.matched_rule,
+            topic=matched_rule,
             intent=intent,
         )
 
@@ -386,7 +383,7 @@ class BakeryDemo:
             emotion_score=emotion_score,
             strategy=strategy,
             product_attribute=(
-            product_attribute.value
+                product_attribute.value
             ),
             extracted_models=list(
                 resolved_models
@@ -398,28 +395,22 @@ class BakeryDemo:
                 search_plan_data["tasks"]
             ),
             prompt_summary=prompt,
-            llm_reply=llm_response.text,
-            llm_model=llm_response.model,
-            matched_rule=(
-                llm_response.matched_rule
-            ),
+            llm_reply=llm_reply,
+            llm_model=llm_model,
+            matched_rule=matched_rule,
             governance_allowed=(
-                governance_result.allowed
+                commerce_response.allowed
             ),
             risk_score=(
-                governance_result.risk_score
+                commerce_response.risk_score
             ),
             compliance_score=(
-                governance_result
-                .compliance_score
+                commerce_response.compliance_score
             ),
-            final_reply=(
-                governance_result
-                .sanitized_reply
-            ),
+            final_reply=commerce_response.text,
             execution_time_ms=elapsed_ms,
             warnings=list(
-                governance_result.warnings
+                governance_data["warnings"]
             ),
             metadata={
                 "scenario_id": (
@@ -431,9 +422,7 @@ class BakeryDemo:
                 "search_plan": (
                     search_plan_data
                 ),
-                "governance": (
-                    governance_result.to_dict()
-                ),
+                "governance": governance_data,
             },
         )
 
