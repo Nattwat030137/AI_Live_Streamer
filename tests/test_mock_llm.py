@@ -1,9 +1,11 @@
-"""Regression tests สำหรับ MockLLMProvider."""
+"""Regression tests for MockLLMProvider."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
+
+import pytest
 
 from app.search_planner import create_search_plan
 from demo.knowledge_retriever import (
@@ -17,8 +19,8 @@ from demo.mock_llm import (
 
 
 @dataclass(frozen=True, slots=True)
-class TestCase:
-    """ข้อมูล Test Case หนึ่งรายการ."""
+class MockLLMCase:
+    """One Mock LLM regression case."""
 
     name: str
     customer_message: str
@@ -30,7 +32,7 @@ class TestCase:
 def build_knowledge(
     customer_message: str,
 ) -> KnowledgeResult:
-    """สร้าง KnowledgeResult จากข้อความลูกค้า."""
+    """Build product knowledge from a customer message."""
 
     plan = create_search_plan(
         customer_message,
@@ -38,18 +40,16 @@ def build_knowledge(
         graph_limit_per_task=4,
     )
 
-    retriever = ProductCatalogRetriever()
-
-    return retriever.retrieve(
+    return ProductCatalogRetriever().retrieve(
         plan
     )
 
 
 def run_case(
     provider: MockLLMProvider,
-    case: TestCase,
+    case: MockLLMCase,
 ) -> MockLLMResponse:
-    """รัน Test Case และตรวจผลลัพธ์."""
+    """Run and validate one regression case."""
 
     knowledge = (
         build_knowledge(
@@ -64,9 +64,7 @@ def run_case(
             "System prompt มีคำว่า ราคา สต็อก "
             "ส่งฟรี และโปรโมชั่น"
         ),
-        customer_message=(
-            case.customer_message
-        ),
+        customer_message=case.customer_message,
         knowledge=knowledge,
     )
 
@@ -78,122 +76,123 @@ def run_case(
         f"got {response.matched_rule!r}"
     )
 
-    assert response.text.strip(), (
-        f"{case.name}: response text "
-        "ต้องไม่ว่าง"
-    )
-
-    assert response.model == (
-        provider.MODEL_NAME
-    ), (
-        f"{case.name}: model ไม่ตรงกับ "
-        "MockLLMProvider.MODEL_NAME"
-    )
+    assert response.text.strip()
+    assert response.model == provider.MODEL_NAME
 
     if case.text_check is not None:
         assert case.text_check(
             response.text
-        ), (
-            f"{case.name}: response text "
-            "ไม่ผ่านเงื่อนไข"
         )
 
     return response
+CASES = (
+    MockLLMCase(
+        name="Greeting",
+        customer_message="สวัสดีครับ",
+        expected_rule="GREETING",
+        text_check=lambda text: (
+            "สวัสดี" in text
+        ),
+    ),
+    MockLLMCase(
+        name="Price",
+        customer_message="5040 ราคาเท่าไหร่",
+        expected_rule="PRICE_REQUEST",
+        text_check=lambda text: (
+            "ราคา" in text
+        ),
+    ),
+    MockLLMCase(
+        name="Stock",
+        customer_message="5040 มีของไหม",
+        expected_rule="STOCK_REQUEST",
+        text_check=lambda text: (
+            "สต็อก" in text
+        ),
+    ),
+    MockLLMCase(
+        name="Shipping",
+        customer_message="ส่งฟรีไหม",
+        expected_rule="SHIPPING_REQUEST",
+        text_check=lambda text: (
+            "จัดส่ง" in text
+            or "ส่งฟรี" in text
+        ),
+    ),
+    MockLLMCase(
+        name="Thank You",
+        customer_message="ขอบคุณครับ",
+        expected_rule="THANK_YOU",
+        text_check=lambda text: (
+            "ยินดี" in text
+        ),
+    ),
+        MockLLMCase(
+        name="Product",
+        customer_message="รุ่น5040",
+        expected_rule="PRODUCT_CATALOG",
+        use_knowledge=True,
+        text_check=lambda text: (
+            "5040" in text
+            and "กระดาษ" in text
+        ),
+    ),
+    MockLLMCase(
+        name="Compatible Bag",
+        customer_message=(
+            "ถาด5073 ใช้กับถุงซีล"
+            "ขนาดเท่าไหร่"
+        ),
+        expected_rule=(
+            "PRODUCT_CATALOG_COMPATIBLE_BAG"
+        ),
+        use_knowledge=True,
+        text_check=lambda text: (
+            "5073" in text
+            and "12 x 20" in text
+        ),
+    ),
+    MockLLMCase(
+        name="Default",
+        customer_message="asdfgh123",
+        expected_rule="DEFAULT",
+        text_check=lambda text: (
+            "รายละเอียด" in text
+        ),
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    CASES,
+    ids=[
+        case.name
+        for case in CASES
+    ],
+)
+def test_mock_llm_case(
+    case: MockLLMCase,
+) -> None:
+    """Expose every regression case to pytest."""
+
+    run_case(
+        MockLLMProvider(),
+        case,
+    )
 
 
 def main() -> None:
-    """รัน Regression Test ทั้งหมด."""
+    """Run the regression cases as a console script."""
 
     provider = MockLLMProvider()
-
-    cases = (
-        TestCase(
-            name="Greeting",
-            customer_message="สวัสดีครับ",
-            expected_rule="GREETING",
-            text_check=lambda text: (
-                "สวัสดี" in text
-            ),
-        ),
-        TestCase(
-            name="Price",
-            customer_message=(
-                "5040 ราคาเท่าไหร่"
-            ),
-            expected_rule="PRICE_REQUEST",
-            text_check=lambda text: (
-                "ราคา" in text
-            ),
-        ),
-        TestCase(
-            name="Stock",
-            customer_message=(
-                "5040 มีของไหม"
-            ),
-            expected_rule="STOCK_REQUEST",
-            text_check=lambda text: (
-                "สต็อก" in text
-            ),
-        ),
-        TestCase(
-            name="Shipping",
-            customer_message="ส่งฟรีไหม",
-            expected_rule="SHIPPING_REQUEST",
-            text_check=lambda text: (
-                "จัดส่ง" in text
-                or "ส่งฟรี" in text
-            ),
-        ),
-        TestCase(
-            name="Thank You",
-            customer_message="ขอบคุณครับ",
-            expected_rule="THANK_YOU",
-            text_check=lambda text: (
-                "ยินดี" in text
-            ),
-        ),
-        TestCase(
-            name="Product",
-            customer_message="รุ่น5040",
-            expected_rule="PRODUCT_CATALOG",
-            use_knowledge=True,
-            text_check=lambda text: (
-                "5040" in text
-                and "กระดาษ" in text
-            ),
-        ),
-        TestCase(
-            name="Compatible Bag",
-            customer_message=(
-                "ถาด5073 ใช้กับถุงซีล"
-                "ขนาดเท่าไหร่"
-            ),
-            expected_rule=(
-                "PRODUCT_CATALOG_COMPATIBLE_BAG"
-            ),
-            use_knowledge=True,
-            text_check=lambda text: (
-                "5073" in text
-                and "12 x 20" in text
-            ),
-        ),
-        TestCase(
-            name="Default",
-            customer_message="asdfgh123",
-            expected_rule="DEFAULT",
-            text_check=lambda text: (
-                "รายละเอียด" in text
-            ),
-        ),
-    )
-
     passed = 0
 
     print("=" * 60)
     print("MockLLM Regression Test")
     print("=" * 60)
 
-    for case in cases:
+    for case in CASES:
         response = run_case(
             provider,
             case,
@@ -212,7 +211,7 @@ def main() -> None:
 
     print("=" * 60)
     print(
-        f"{passed} / {len(cases)} PASSED"
+        f"{passed} / {len(CASES)} PASSED"
     )
     print("=" * 60)
 
