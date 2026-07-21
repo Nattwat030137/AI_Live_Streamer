@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from time import perf_counter
 
+from app.policies.engine import GovernanceEngine
 from app.intent_engine import Intent, detect_intent
 from app.memory.conversation import ConversationMemory
 from app.product_attribute import (
@@ -56,6 +57,9 @@ class CommerceService:
         response_generation_service: (
             ResponseGenerationService | None
         ) = None,
+        governance_engine: (
+            GovernanceEngine | None
+        ) = None,
     ) -> None:
         """Initialize commerce application services."""
 
@@ -75,6 +79,10 @@ class CommerceService:
         self.response_generation_service = (
             response_generation_service
         )
+        self.governance_engine = (
+            governance_engine
+        )
+
     def prepare_pipeline(
         self,
         *,
@@ -197,9 +205,14 @@ class CommerceService:
 
         response_text = "CommerceService is ready."
         generation_status = "disabled"
+        governance_status = "disabled"
         llm_data = None
         prompt_data = None
+        governance_data = None
         response_status = "intent_analyzed"
+        allowed = True
+        risk_score = 0.0
+        compliance_score = 100.0
 
         if self.response_generation_service is not None:
             generation = (
@@ -225,6 +238,43 @@ class CommerceService:
             prompt_data = generation.prompt.to_dict()
             response_status = "response_generated"
 
+            if self.governance_engine is not None:
+                governance_result = (
+                    self.governance_engine.evaluate_reply(
+                        reply=response_text,
+                        platform=selected_platform,
+                        customer_message=message,
+                        metadata={
+                            "intent": (
+                                pipeline.intent.value
+                            ),
+                            "product_attribute": (
+                                pipeline
+                                .product_attribute
+                                .value
+                            ),
+                        },
+                    )
+                )
+
+                response_text = (
+                    governance_result.sanitized_reply
+                )
+                governance_status = "evaluated"
+                governance_data = (
+                    governance_result.to_dict()
+                )
+                allowed = governance_result.allowed
+                risk_score = float(
+                    governance_result.risk_score
+                )
+                compliance_score = float(
+                    governance_result.compliance_score
+                )
+                response_status = (
+                    "governance_evaluated"
+                )
+
             self.memory.add_assistant(
                 response_text
             )
@@ -235,9 +285,9 @@ class CommerceService:
 
         return CommerceResponse(
             text=response_text,
-            allowed=True,
-            risk_score=0.0,
-            compliance_score=100.0,
+            allowed=allowed,
+            risk_score=risk_score,
+            compliance_score=compliance_score,
             execution_time_ms=elapsed_ms,
             metadata={
                 "customer_message": message,
@@ -268,6 +318,10 @@ class CommerceService:
                 "generation_status": (
                     generation_status
                 ),
+                "governance_status": (
+                 governance_status
+                 ),
+                "governance": governance_data,
                 "llm": llm_data,
                 "prompt_builder": prompt_data,
                 "status": response_status,
