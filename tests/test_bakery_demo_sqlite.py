@@ -52,6 +52,21 @@ def test_product_5040(
         scenario
     )
 
+    assert len(demo.memory.turns) == 2
+
+    assert [
+        turn.role
+        for turn in demo.memory.turns
+    ] == [
+        "customer",
+        "assistant",
+    ]
+
+    assert (
+        demo.memory.latest_assistant_message()
+        == report.llm_reply
+    )
+
     assert_common_report(
         report
     )

@@ -312,10 +312,6 @@ class BakeryDemo:
             llm_response.text
         )
 
-        self.memory.add_assistant(
-    llm_response.text
-)
-
         governance_result = (
             self.governance.evaluate_reply(
                 reply=llm_response.text,
