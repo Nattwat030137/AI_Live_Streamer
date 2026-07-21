@@ -360,3 +360,15 @@ def test_request_context_reaches_pipeline() -> None:
     ] == "general"
 
     assert request_metadata["intent"] == "caller-value"
+
+
+def test_prepared_pipeline_preserves_request() -> None:
+    service = CommerceService()
+
+    pipeline = service.prepare_pipeline(
+        customer_message="  รุ่น 5040  ",
+        platform="  SHOPEE  ",
+    )
+
+    assert pipeline.customer_message == "รุ่น 5040"
+    assert pipeline.platform == "shopee"

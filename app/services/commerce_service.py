@@ -34,6 +34,8 @@ from app.services.search_planning_service import (
 class CommercePipelineResult:
     """Typed result prepared by the commerce pipeline."""
 
+    customer_message: str
+    platform: str
     intent: Intent
     product_attribute: ProductAttribute
     planning: SearchPlanningResult
@@ -139,6 +141,8 @@ class CommerceService:
         )
 
         return CommercePipelineResult(
+            customer_message=message,
+            platform=selected_platform,
             intent=intent,
             product_attribute=product_attribute,
             planning=planning,
