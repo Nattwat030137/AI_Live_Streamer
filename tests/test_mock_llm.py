@@ -182,6 +182,34 @@ def test_mock_llm_case(
     )
 
 
+def test_missing_model_returns_specific_not_found_response() -> None:
+    """Return a direct answer when a requested model is missing."""
+
+    customer_message = "มีสินค้ารุ่น 9999 ไหม"
+    knowledge = build_knowledge(
+        customer_message
+    )
+
+    response = MockLLMProvider().generate(
+        prompt="",
+        customer_message=customer_message,
+        knowledge=knowledge,
+    )
+
+    assert knowledge.found is False
+    assert knowledge.searched_models == [
+        "9999"
+    ]
+    assert response.matched_rule == (
+        "PRODUCT_NOT_FOUND"
+    )
+    assert response.response_type == (
+        "knowledge_product_not_found"
+    )
+    assert "ไม่พบ" in response.text
+    assert "9999" in response.text
+
+
 def main() -> None:
     """Run the regression cases as a console script."""
 

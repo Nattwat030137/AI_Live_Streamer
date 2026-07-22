@@ -136,7 +136,14 @@ def test_product_knowledge_is_returned() -> None:
 
 
 def test_missing_product_has_no_primary_product() -> None:
-    service = CommerceService()
+    service = CommerceService(
+        response_generation_service=(
+            ResponseGenerationService(
+                provider=MockProvider(),
+            )
+        ),
+        governance_engine=GovernanceEngine(),
+    )
 
     response = service.process_message(
         "มีสินค้ารุ่น 9999 ไหม"
@@ -157,6 +164,10 @@ def test_missing_product_has_no_primary_product() -> None:
     assert response.metadata["knowledge"][
         "warnings"
     ]
+
+    assert response.allowed is True
+    assert "ไม่พบ" in response.text
+    assert "9999" in response.text
 
 
 def test_follow_up_reuses_product_knowledge() -> None:
