@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import httpx
+import pytest
+
+from openai import APIConnectionError
+
 from app.llm.config import LLMConfig
 from app.llm.openai_provider import (
     OpenAIProvider,
@@ -62,6 +67,81 @@ class FakeOpenAIClient:
 
     def __init__(self) -> None:
         self.responses = FakeResponsesAPI()
+
+
+def test_connection_error_reaches_runtime_handler() -> None:
+    """Preserve connection errors for the console runtime handler."""
+
+    connection_error = APIConnectionError(
+        request=httpx.Request(
+            "POST",
+            "https://example.invalid",
+        )
+    )
+
+    class ConnectionErrorResponsesAPI:
+        def create(self, **kwargs):
+            raise connection_error
+
+    class ConnectionErrorClient:
+        responses = ConnectionErrorResponsesAPI()
+
+    provider = OpenAIProvider(
+        config=LLMConfig(
+            provider="openai",
+        ),
+        client=ConnectionErrorClient(),
+    )
+
+    with pytest.raises(
+        APIConnectionError
+    ) as captured:
+        provider.generate(
+            LLMRequest(
+                prompt="test connection error",
+            )
+        )
+
+    assert captured.value is connection_error
+
+
+def test_unknown_error_is_wrapped_without_internal_details() -> None:
+    """Wrap unknown errors without exposing their internal message."""
+
+    internal_detail = "internal-sensitive-detail"
+
+    class UnknownErrorResponsesAPI:
+        def create(self, **kwargs):
+            raise ValueError(
+                internal_detail
+            )
+
+    class UnknownErrorClient:
+        responses = UnknownErrorResponsesAPI()
+
+    provider = OpenAIProvider(
+        config=LLMConfig(
+            provider="openai",
+        ),
+        client=UnknownErrorClient(),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "^OpenAI Responses API "
+            "request failed$"
+        ),
+    ) as captured:
+        provider.generate(
+            LLMRequest(
+                prompt="test unknown error",
+            )
+        )
+
+    assert internal_detail not in str(
+        captured.value
+    )
 
 
 def main() -> None:
