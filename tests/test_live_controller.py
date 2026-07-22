@@ -1,5 +1,7 @@
 """Tests for LiveCommerceController."""
 
+import logging
+
 from app.live_controller import LiveCommerceController
 
 
@@ -99,3 +101,28 @@ def test_controller_keeps_response_when_voice_fails() -> None:
     assert response.metadata[
         "voice_error"
     ] == "RuntimeError"
+
+
+def test_controller_logs_safe_processing_summary(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+
+    controller = LiveCommerceController(
+        provider_name="mock",
+    )
+
+    response = controller.process_message(
+        "รุ่น 5040",
+        speak_response=False,
+    )
+
+    log_text = "\n".join(
+        caplog.messages
+    )
+
+    assert "Live commerce processed" in log_text
+    assert "status=governance_evaluated" in log_text
+    assert "voice_status=disabled" in log_text
+    assert "รุ่น 5040" not in log_text
+    assert response.text not in log_text

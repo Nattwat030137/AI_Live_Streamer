@@ -114,4 +114,21 @@ class LiveCommerceController:
                 "voice_error"
             ] = None
 
+        logger.info(
+            "Live commerce processed "
+            "status=%s allowed=%s "
+            "voice_status=%s "
+            "execution_time_ms=%.2f",
+            response.metadata.get(
+                "status",
+                "unknown",
+            ),
+            response.allowed,
+            response.metadata.get(
+                "voice_status",
+                "unknown",
+            ),
+            response.execution_time_ms,
+        )
+
         return response
