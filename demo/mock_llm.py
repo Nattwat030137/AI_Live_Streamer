@@ -151,6 +151,15 @@ class MockLLMProvider:
         if knowledge_response is not None:
             return knowledge_response
 
+        if (
+            knowledge is not None
+            and not knowledge.found
+            and knowledge.searched_models
+        ):
+            return self._answer_product_not_found(
+                knowledge=knowledge,
+            )
+
         return self._answer_default()
 
     def generate_text(
@@ -387,6 +396,33 @@ class MockLLMProvider:
                 "customer_acknowledgement"
             ),
             matched_rule="THANK_YOU",
+        )
+
+    def _answer_product_not_found(
+        self,
+        *,
+        knowledge: KnowledgeResult,
+    ) -> MockLLMResponse:
+        """ตอบตรงรุ่นเมื่อค้นหา Product Catalog แล้วไม่พบ."""
+
+        searched_models = [
+            model.strip()
+            for model in knowledge.searched_models
+            if model.strip()
+        ]
+        model_text = ", ".join(
+            searched_models
+        )
+
+        return self._build_response(
+            text=(
+                "ขออภัยค่ะ ไม่พบสินค้ารุ่น "
+                f"{model_text} ในฐานข้อมูลค่ะ"
+            ),
+            response_type=(
+                "knowledge_product_not_found"
+            ),
+            matched_rule="PRODUCT_NOT_FOUND",
         )
 
     def _answer_default(
