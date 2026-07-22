@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    RateLimitError,
+)
+
 from app.llm.base import LLMProvider
 from app.llm.config import (
     LLMConfig,
@@ -99,10 +106,16 @@ class OpenAIProvider(LLMProvider):
                     **request_payload
                 )
             )
+        except (
+            AuthenticationError,
+            RateLimitError,
+            APIConnectionError,
+            APIStatusError,
+        ):
+            raise
         except Exception as error:
             raise RuntimeError(
-                "OpenAI Responses API request failed: "
-                f"{error}"
+                "OpenAI Responses API request failed"
             ) from error
 
         return self._map_response(
