@@ -134,6 +134,30 @@ def test_runtime_status_display_hides_api_key() -> None:
     )
 
 
+def test_mock_runtime_reports_api_key_not_required() -> None:
+    """Report that an API key is unnecessary for mock-only runtime."""
+
+    output_messages: list[str] = []
+    status = RuntimeStatus(
+        provider_name="mock",
+        voice_enabled=False,
+        api_key_configured=True,
+        product_database_exists=True,
+        audio_directory_exists=True,
+    )
+
+    display_runtime_status(
+        status,
+        output_callback=output_messages.append,
+    )
+
+    assert status.api_key_required is False
+    assert (
+        "API key: not required"
+        in output_messages
+    )
+
+
 def test_main_check_exits_without_console(
     monkeypatch,
 ) -> None:
@@ -221,6 +245,7 @@ def test_main_check_json_returns_machine_readable_status(
     assert status_data["ready"] is True
     assert status_data["provider"] == "mock"
     assert status_data["voice_enabled"] is False
+    assert status_data["api_key_required"] is False
     assert "api_key" not in status_data
 
 
@@ -262,6 +287,7 @@ def test_main_check_json_reports_not_ready(
     assert status_data["ready"] is False
     assert status_data["provider"] == "openai"
     assert status_data["api_key_configured"] is False
+    assert status_data["api_key_required"] is True
     assert len(status_data["errors"]) == 2
     assert "api_key" not in status_data
 

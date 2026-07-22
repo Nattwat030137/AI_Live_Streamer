@@ -60,6 +60,9 @@ def display_runtime_status_json(
         "api_key_configured": (
             status.api_key_configured
         ),
+        "api_key_required": (
+            status.api_key_required
+        ),
         "product_database_exists": (
             status.product_database_exists
         ),
@@ -97,13 +100,17 @@ def display_runtime_status(
             else "disabled"
         )
     )
-    output_callback(
-        "API key: "
-        + (
+    api_key_status = "not required"
+
+    if status.api_key_required:
+        api_key_status = (
             "configured"
             if status.api_key_configured
             else "missing"
         )
+
+    output_callback(
+        f"API key: {api_key_status}"
     )
     output_callback(
         "Product database: "
