@@ -1,5 +1,7 @@
 """Tests for the AI Live Streamer console entry point."""
 
+import json
+
 from app.live_controller import LiveCommerceController
 from app.main import (
     create_live_controller,
@@ -188,3 +190,77 @@ def test_main_check_returns_one_when_not_ready(
         message.startswith("Error:")
         for message in output_messages
     )
+
+
+def test_main_check_json_returns_machine_readable_status(
+    monkeypatch,
+) -> None:
+    output_messages: list[str] = []
+
+    monkeypatch.setenv(
+        "LLM_PROVIDER",
+        "mock",
+    )
+    monkeypatch.setenv(
+        "VOICE_ENABLED",
+        "false",
+    )
+
+    exit_code = main(
+        ["--check-json"],
+        output_callback=output_messages.append,
+    )
+
+    assert exit_code == 0
+    assert len(output_messages) == 1
+
+    status_data = json.loads(
+        output_messages[0]
+    )
+
+    assert status_data["ready"] is True
+    assert status_data["provider"] == "mock"
+    assert status_data["voice_enabled"] is False
+    assert "api_key" not in status_data
+
+
+def test_main_check_json_reports_not_ready(
+    monkeypatch,
+) -> None:
+    output_messages: list[str] = []
+
+    runtime_status = RuntimeStatus(
+        provider_name="openai",
+        voice_enabled=True,
+        api_key_configured=False,
+        product_database_exists=False,
+        audio_directory_exists=True,
+        errors=(
+            "OpenAI API key is missing.",
+            "Product database is missing.",
+        ),
+        warnings=(),
+    )
+
+    monkeypatch.setattr(
+        "app.main.inspect_runtime_config",
+        lambda: runtime_status,
+    )
+
+    exit_code = main(
+        ["--check-json"],
+        output_callback=output_messages.append,
+    )
+
+    assert exit_code == 1
+    assert len(output_messages) == 1
+
+    status_data = json.loads(
+        output_messages[0]
+    )
+
+    assert status_data["ready"] is False
+    assert status_data["provider"] == "openai"
+    assert status_data["api_key_configured"] is False
+    assert len(status_data["errors"]) == 2
+    assert "api_key" not in status_data

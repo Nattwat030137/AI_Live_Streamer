@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from collections.abc import Callable
@@ -24,6 +25,40 @@ from core.logger import logger
 
 InputCallback = Callable[[str], str]
 OutputCallback = Callable[[str], None]
+
+
+def display_runtime_status_json(
+    status: RuntimeStatus,
+    *,
+    output_callback: OutputCallback = print,
+) -> None:
+    """Display machine-readable runtime readiness."""
+
+    status_data = {
+        "ready": status.ready,
+        "provider": status.provider_name,
+        "voice_enabled": status.voice_enabled,
+        "api_key_configured": (
+            status.api_key_configured
+        ),
+        "product_database_exists": (
+            status.product_database_exists
+        ),
+        "audio_directory_exists": (
+            status.audio_directory_exists
+        ),
+        "errors": list(status.errors),
+        "warnings": list(status.warnings),
+    }
+
+    output_callback(
+        json.dumps(
+            status_data,
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+
 
 def display_runtime_status(
     status: RuntimeStatus,
@@ -242,6 +277,14 @@ def main(
     )
 
     runtime_status = inspect_runtime_config()
+
+    if "--check-json" in arguments:
+        display_runtime_status_json(
+            runtime_status,
+            output_callback=output_callback,
+        )
+        return 0 if runtime_status.ready else 1
+
     display_runtime_status(
         runtime_status,
         output_callback=output_callback,
