@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Callable
 
 from openai import (
@@ -227,17 +228,33 @@ def run_console(
             )
 
 
-def main() -> None:
-    """Validate production configuration and run the console."""
+def main(
+    argv: list[str] | None = None,
+    *,
+    output_callback: OutputCallback = print,
+) -> int:
+    """Validate configuration and run the requested mode."""
+
+    arguments = (
+        list(argv)
+        if argv is not None
+        else sys.argv[1:]
+    )
 
     runtime_status = inspect_runtime_config()
-    display_runtime_status(runtime_status)
+    display_runtime_status(
+        runtime_status,
+        output_callback=output_callback,
+    )
 
     if not runtime_status.ready:
         logger.error(
             "Runtime configuration is not ready"
         )
-        return
+        return 1
+
+    if "--check" in arguments:
+        return 0
 
     controller = create_live_controller(
         provider_name=(
@@ -247,9 +264,13 @@ def main() -> None:
             runtime_status.voice_enabled
         ),
     )
-    run_console(controller)
+    run_console(
+        controller,
+        output_callback=output_callback,
+    )
 
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

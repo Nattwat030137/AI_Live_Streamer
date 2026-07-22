@@ -4,6 +4,7 @@ from app.live_controller import LiveCommerceController
 from app.main import (
     create_live_controller,
     display_runtime_status,
+    main,
     resolve_voice_enabled,
     run_console,
 )
@@ -127,5 +128,63 @@ def test_runtime_status_display_hides_api_key() -> None:
     )
     assert all(
         "sk-" not in message
+        for message in output_messages
+    )
+
+
+def test_main_check_exits_without_console(
+    monkeypatch,
+) -> None:
+    output_messages: list[str] = []
+
+    monkeypatch.setenv(
+        "LLM_PROVIDER",
+        "mock",
+    )
+    monkeypatch.setenv(
+        "VOICE_ENABLED",
+        "false",
+    )
+
+    exit_code = main(
+        ["--check"],
+        output_callback=output_messages.append,
+    )
+
+    assert exit_code == 0
+    assert "LLM provider: mock" in output_messages
+    assert "Voice: disabled" in output_messages
+
+
+def test_main_check_returns_one_when_not_ready(
+    monkeypatch,
+) -> None:
+    output_messages: list[str] = []
+
+    runtime_status = RuntimeStatus(
+        provider_name="mock",
+        voice_enabled=False,
+        api_key_configured=False,
+        product_database_exists=False,
+        audio_directory_exists=False,
+        errors=(
+            "Product database is missing.",
+        ),
+        warnings=(),
+    )
+
+    monkeypatch.setattr(
+        "app.main.inspect_runtime_config",
+        lambda: runtime_status,
+    )
+
+    exit_code = main(
+        ["--check"],
+        output_callback=output_messages.append,
+    )
+
+    assert exit_code == 1
+    assert any(
+        message.startswith("Error:")
         for message in output_messages
     )
