@@ -27,6 +27,25 @@ InputCallback = Callable[[str], str]
 OutputCallback = Callable[[str], None]
 
 
+def display_help(
+    *,
+    output_callback: OutputCallback = print,
+) -> None:
+    """Display command-line usage."""
+
+    help_lines = (
+        "Usage: python -m app.main [option]",
+        "",
+        "Options:",
+        "  --check       Check runtime readiness",
+        "  --check-json  Check readiness as JSON",
+        "  -h, --help    Show this help message",
+    )
+
+    for line in help_lines:
+        output_callback(line)
+
+
 def display_runtime_status_json(
     status: RuntimeStatus,
     *,
@@ -275,6 +294,38 @@ def main(
         if argv is not None
         else sys.argv[1:]
     )
+    if any(
+        argument in {
+            "-h",
+            "--help",
+        }
+        for argument in arguments
+    ):
+        display_help(
+            output_callback=output_callback,
+        )
+        return 0
+
+    known_arguments = {
+        "--check",
+        "--check-json",
+    }
+    unknown_arguments = [
+        argument
+        for argument in arguments
+        if argument not in known_arguments
+    ]
+
+    if unknown_arguments:
+        output_callback(
+            "Unknown argument: "
+            f"{unknown_arguments[0]}"
+        )
+        display_help(
+            output_callback=output_callback,
+        )
+        return 2
+
 
     runtime_status = inspect_runtime_config()
 

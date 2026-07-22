@@ -264,3 +264,69 @@ def test_main_check_json_reports_not_ready(
     assert status_data["api_key_configured"] is False
     assert len(status_data["errors"]) == 2
     assert "api_key" not in status_data
+
+
+def test_main_help_skips_runtime_validation(
+    monkeypatch,
+) -> None:
+    output_messages: list[str] = []
+
+    def fail_runtime_validation():
+        raise AssertionError(
+            "Runtime validation should not run for --help."
+        )
+
+    monkeypatch.setattr(
+        "app.main.inspect_runtime_config",
+        fail_runtime_validation,
+    )
+
+    exit_code = main(
+        ["--help"],
+        output_callback=output_messages.append,
+    )
+
+    assert exit_code == 0
+    assert any(
+        message.startswith("Usage:")
+        for message in output_messages
+    )
+    assert any(
+        "--check" in message
+        for message in output_messages
+    )
+    assert any(
+        "--check-json" in message
+        for message in output_messages
+    )
+
+
+def test_main_rejects_unknown_argument(
+    monkeypatch,
+) -> None:
+    output_messages: list[str] = []
+
+    def fail_runtime_validation():
+        raise AssertionError(
+            "Invalid arguments should fail before runtime validation."
+        )
+
+    monkeypatch.setattr(
+        "app.main.inspect_runtime_config",
+        fail_runtime_validation,
+    )
+
+    exit_code = main(
+        ["--unknown"],
+        output_callback=output_messages.append,
+    )
+
+    assert exit_code == 2
+    assert (
+        "Unknown argument: --unknown"
+        in output_messages
+    )
+    assert any(
+        message.startswith("Usage:")
+        for message in output_messages
+    )
