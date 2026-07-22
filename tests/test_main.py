@@ -3,9 +3,11 @@
 from app.live_controller import LiveCommerceController
 from app.main import (
     create_live_controller,
+    display_runtime_status,
     resolve_voice_enabled,
     run_console,
 )
+from app.runtime_config import RuntimeStatus
 
 
 def test_console_routes_message_through_controller() -> None:
@@ -101,3 +103,29 @@ def test_controller_can_be_created_without_voice() -> None:
     assert controller.voice_callback is None
     assert response.allowed is True
     assert "5040" in response.text
+
+def test_runtime_status_display_hides_api_key() -> None:
+    output_messages: list[str] = []
+    status = RuntimeStatus(
+        provider_name="openai",
+        voice_enabled=True,
+        api_key_configured=True,
+        product_database_exists=True,
+        audio_directory_exists=True,
+    )
+
+    display_runtime_status(
+        status,
+        output_callback=output_messages.append,
+    )
+
+    assert "LLM provider: openai" in output_messages
+    assert "Voice: enabled" in output_messages
+    assert (
+        "API key: configured"
+        in output_messages
+    )
+    assert all(
+        "sk-" not in message
+        for message in output_messages
+    )

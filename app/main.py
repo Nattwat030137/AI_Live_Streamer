@@ -13,12 +13,61 @@ from openai import (
 )
 
 from app.live_controller import LiveCommerceController
+from app.runtime_config import (
+    RuntimeStatus,
+    inspect_runtime_config,
+)
 
 from core.logger import logger
 
 
 InputCallback = Callable[[str], str]
 OutputCallback = Callable[[str], None]
+
+def display_runtime_status(
+    status: RuntimeStatus,
+    *,
+    output_callback: OutputCallback = print,
+) -> None:
+    """Display runtime readiness without exposing secrets."""
+
+    output_callback(
+        f"LLM provider: {status.provider_name}"
+    )
+    output_callback(
+        "Voice: "
+        + (
+            "enabled"
+            if status.voice_enabled
+            else "disabled"
+        )
+    )
+    output_callback(
+        "API key: "
+        + (
+            "configured"
+            if status.api_key_configured
+            else "missing"
+        )
+    )
+    output_callback(
+        "Product database: "
+        + (
+            "ready"
+            if status.product_database_exists
+            else "missing"
+        )
+    )
+
+    for warning in status.warnings:
+        output_callback(
+            f"Warning: {warning}"
+        )
+
+    for error in status.errors:
+        output_callback(
+            f"Error: {error}"
+        )
 
 
 def resolve_voice_enabled(
@@ -179,10 +228,27 @@ def run_console(
 
 
 def main() -> None:
-    """Create production dependencies and run the console."""
+    """Validate production configuration and run the console."""
 
-    controller = create_live_controller()
+    runtime_status = inspect_runtime_config()
+    display_runtime_status(runtime_status)
+
+    if not runtime_status.ready:
+        logger.error(
+            "Runtime configuration is not ready"
+        )
+        return
+
+    controller = create_live_controller(
+        provider_name=(
+            runtime_status.provider_name
+        ),
+        voice_enabled=(
+            runtime_status.voice_enabled
+        ),
+    )
     run_console(controller)
+
 
 
 if __name__ == "__main__":
