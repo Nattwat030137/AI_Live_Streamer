@@ -12,6 +12,7 @@ from app.services import (
     ResponseGenerationService,
 )
 from app.services.models import CommerceResponse
+from core.logger import logger
 
 
 VoiceCallback = Callable[[str], None]
@@ -74,6 +75,43 @@ class LiveCommerceController:
         )
 
         if should_speak:
-            self.voice_callback(response.text)
+            try:
+                self.voice_callback(response.text)
+
+            except Exception as error:
+                response.metadata[
+                    "voice_status"
+                ] = "failed"
+                response.metadata[
+                    "voice_error"
+                ] = type(error).__name__
+
+                logger.exception(
+                    "Voice output failed: %s",
+                    type(error).__name__,
+                )
+
+            else:
+                response.metadata[
+                    "voice_status"
+                ] = "spoken"
+                response.metadata[
+                    "voice_error"
+                ] = None
+
+        else:
+            response.metadata[
+                "voice_status"
+            ] = (
+                "disabled"
+                if (
+                    not speak_response
+                    or self.voice_callback is None
+                )
+                else "skipped"
+            )
+            response.metadata[
+                "voice_error"
+            ] = None
 
         return response

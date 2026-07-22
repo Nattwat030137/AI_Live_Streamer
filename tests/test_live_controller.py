@@ -21,6 +21,12 @@ def test_controller_processes_and_speaks_reply() -> None:
     ] == "governance_evaluated"
     assert "5040" in response.text
     assert spoken_messages == [response.text]
+    assert response.metadata[
+        "voice_status"
+    ] == "spoken"
+    assert response.metadata[
+        "voice_error"
+    ] is None
 
 
 def test_controller_can_disable_voice() -> None:
@@ -37,6 +43,12 @@ def test_controller_can_disable_voice() -> None:
 
     assert response.allowed is True
     assert spoken_messages == []
+    assert response.metadata[
+        "voice_status"
+    ] == "disabled"
+    assert response.metadata[
+        "voice_error"
+    ] is None
 
 
 def test_controller_rejects_empty_message_without_voice() -> None:
@@ -56,3 +68,34 @@ def test_controller_rejects_empty_message_without_voice() -> None:
     ] == "empty_message"
     assert spoken_messages == []
     assert controller.commerce_service.memory.turns == []
+    assert response.metadata[
+        "voice_status"
+    ] == "skipped"
+    assert response.metadata[
+        "voice_error"
+    ] is None
+
+
+def test_controller_keeps_response_when_voice_fails() -> None:
+    def failing_voice(_: str) -> None:
+        raise RuntimeError(
+            "Speaker is unavailable."
+        )
+
+    controller = LiveCommerceController(
+        provider_name="mock",
+        voice_callback=failing_voice,
+    )
+
+    response = controller.process_message(
+        "รุ่น 5040",
+    )
+
+    assert response.allowed is True
+    assert "5040" in response.text
+    assert response.metadata[
+        "voice_status"
+    ] == "failed"
+    assert response.metadata[
+        "voice_error"
+    ] == "RuntimeError"
