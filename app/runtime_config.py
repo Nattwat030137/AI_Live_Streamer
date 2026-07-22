@@ -31,6 +31,15 @@ class RuntimeStatus:
 
         return not self.errors
 
+    @property
+    def api_key_required(self) -> bool:
+        """Return whether the selected runtime requires an API key."""
+
+        return (
+            self.provider_name == "openai"
+            or self.voice_enabled
+        )
+
 
 def _resolve_boolean(
     value: str,
