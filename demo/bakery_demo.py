@@ -6,26 +6,15 @@ import sys
 from time import perf_counter
 from typing import Any
 
-from app.intent_engine import detect_intent
-from app.product_attribute import (
-    detect_product_attribute,
+from app.services import (
+    CommerceService,
+    ResponseGenerationService,
 )
 from app.memory.conversation import ConversationMemory
 from app.memory.product_slots import ProductSlots
-from app.memory.reference_resolver import (
-    resolve_reference,
-)
 from app.policies.engine import GovernanceEngine
 from app.policies.registry import PolicyRegistry
-from app.search_planner import (
-    create_search_plan,
-    clone_search_plan_with_models,
-    search_plan_to_dict,
-)
 from app.llm.factory import create_llm_provider
-from app.llm.types import LLMRequest
-from app.prompt.builder import CommercePromptBuilder
-from demo.knowledge_retriever import ProductCatalogRetriever
 from demo.renderer import (
     ConsoleRenderer,
     DemoReport,
@@ -120,7 +109,7 @@ EMOTION_BY_RULE: dict[str, tuple[str, int]] = {
 
 
 STRATEGY_BY_RULE: dict[str, str] = {
-    
+
         "PRODUCT_CATALOG_COMPATIBLE_BAG": (
         "answer_compatible_packaging"
     ),
@@ -173,15 +162,13 @@ class BakeryDemo:
             **resolved_provider_options,
         )
 
+        self.response_generation = (
+            ResponseGenerationService(
+                provider=self.llm,
+            )
+        )
+
         self.renderer = ConsoleRenderer()
-
-        self.prompt_builder = (
-            CommercePromptBuilder()
-        )
-
-        self.knowledge_retriever = (
-            ProductCatalogRetriever()
-        )
 
         self.registry = PolicyRegistry()
 
@@ -190,6 +177,13 @@ class BakeryDemo:
         )
         self.memory = ConversationMemory()
         self.product_slots = ProductSlots()
+        self.commerce_service = CommerceService(
+            memory=self.memory,
+            response_generation_service=(
+                self.response_generation
+            ),
+            governance_engine=self.governance,
+        )
 
     def run_scenario(
         self,
@@ -198,70 +192,32 @@ class BakeryDemo:
         """ประมวลผล Scenario หนึ่งรายการ."""
 
         started_at = perf_counter()
-        self.memory.add_customer(
-    scenario.customer_message
-)
 
-        search_plan = create_search_plan(
-            message=(
-                scenario.customer_message
-            ),
-            max_tasks=10,
-            graph_limit_per_task=4,
-        )
-
-        
-        resolved_models = (
-    self.memory.resolve_models(
-        search_plan.extracted_models
-    )
-)
-        reference_model = resolve_reference(
-    scenario.customer_message,
-    self.memory,
-)
-
-        if (
-    reference_model is not None
-    and reference_model not in resolved_models
-):
-         resolved_models.insert(
-        0,
-        reference_model,
-    )       
-        
-        self.memory.active_models = (
-    resolved_models
-)
-        resolved_search_plan = (
-    clone_search_plan_with_models(
-        plan=search_plan,
-        models=resolved_models,
-        max_tasks=10,
-        graph_limit_per_task=4,
-    )
-)
-        search_plan_data = search_plan_to_dict(
-    resolved_search_plan
-)       
-        pre_intent = detect_intent(
-    scenario.customer_message
-)
-        product_attribute = (
-    detect_product_attribute(
-        scenario.customer_message
-    )
-)
-
-        self.memory.update_context(
-    intent=pre_intent.value,
-)
-    
-        knowledge_result = (
-            self.knowledge_retriever.retrieve(
-                resolved_search_plan
+        pipeline = (
+            self.commerce_service.prepare_pipeline(
+                customer_message=(
+                    scenario.customer_message
+                ),
+                platform=scenario.platform,
             )
         )
+
+        planning = pipeline.planning
+        search_plan = planning.search_plan
+
+        resolved_models = list(
+            planning.resolved_models
+        )
+
+        search_plan_data = (
+            planning.search_plan_data
+        )
+
+        product_attribute = (
+            pipeline.product_attribute
+        )
+
+        knowledge_result = pipeline.knowledge
 
         primary_product = (
             knowledge_result.primary_product
@@ -284,86 +240,60 @@ class BakeryDemo:
                     ),
                 },
             )
-        prompt_result = (
-            self.prompt_builder.build(
-                customer_message=(
-                    scenario.customer_message
-                ),
-                platform=scenario.platform,
-                knowledge=knowledge_result,
-                search_plan=resolved_search_plan,
-                conversation_context=(
-                    self.memory.build_context_text()
-                ),
+
+        commerce_response = (
+            self.commerce_service
+            .process_prepared_pipeline(
+                pipeline,
                 product_context=(
-                    self.product_slots.build_context_text()
-                ),
-            )
-        )
-
-        prompt = prompt_result.prompt
-       
-        llm_request = LLMRequest(
-    prompt=prompt,
-    customer_message=(
-        scenario.customer_message
-    ),
-    system_message=(
-        prompt_result.system_message
-    ),
-    metadata={
-        "knowledge": (
-            knowledge_result
-        ),
-        "product_attribute": (
-            product_attribute.value
-        ),
-        "scenario_id": (
-            scenario.scenario_id
-        ),
-        "platform": (
-            scenario.platform
-        ),
-        "search_plan": (
-            search_plan_data
-        ),
-        "prompt_builder": (
-            prompt_result.to_dict()
-        ),
-    },
-)
-
-        llm_response = self.llm.generate(
-            llm_request
-        )
-        self.memory.add_assistant(
-    llm_response.text
-)
-
-        governance_result = (
-            self.governance.evaluate_reply(
-                reply=llm_response.text,
-                platform=scenario.platform,
-                customer_message=(
-                    scenario.customer_message
+                    self.product_slots
+                    .build_context_text()
                 ),
                 metadata={
                     "scenario_id": (
                         scenario.scenario_id
                     ),
-                    "mock_rule": (
-                        llm_response.matched_rule
-                    ),
-                    "search_plan": (
-                        search_plan_data
-                    ),
                 },
             )
         )
 
+        llm_data = commerce_response.metadata[
+            "llm"
+        ]
+        prompt_data = commerce_response.metadata[
+            "prompt_builder"
+        ]
+        governance_data = (
+            commerce_response.metadata[
+                "governance"
+            ]
+        )
+
+        if not isinstance(llm_data, dict):
+            raise RuntimeError(
+                "Commerce response is missing LLM data."
+            )
+
+        if not isinstance(prompt_data, dict):
+            raise RuntimeError(
+                "Commerce response is missing prompt data."
+            )
+
+        if not isinstance(governance_data, dict):
+            raise RuntimeError(
+                "Commerce response is missing governance data."
+            )
+
+        prompt = str(prompt_data["prompt"])
+        llm_reply = str(llm_data["text"])
+        llm_model = str(llm_data["model"])
+        matched_rule = str(
+            llm_data["matched_rule"]
+        )
+
         intent, intent_score = (
             INTENT_BY_RULE.get(
-                llm_response.matched_rule,
+                matched_rule,
                 (
                     "unknown",
                     0,
@@ -373,7 +303,7 @@ class BakeryDemo:
 
         emotion, emotion_score = (
             EMOTION_BY_RULE.get(
-                llm_response.matched_rule,
+                matched_rule,
                 (
                     "neutral",
                     0,
@@ -382,12 +312,12 @@ class BakeryDemo:
         )
 
         strategy = STRATEGY_BY_RULE.get(
-            llm_response.matched_rule,
+            matched_rule,
             "answer",
         )
 
         self.memory.update_context(
-            topic=llm_response.matched_rule,
+            topic=matched_rule,
             intent=intent,
         )
 
@@ -406,7 +336,7 @@ class BakeryDemo:
             emotion_score=emotion_score,
             strategy=strategy,
             product_attribute=(
-            product_attribute.value
+                product_attribute.value
             ),
             extracted_models=list(
                 resolved_models
@@ -418,28 +348,22 @@ class BakeryDemo:
                 search_plan_data["tasks"]
             ),
             prompt_summary=prompt,
-            llm_reply=llm_response.text,
-            llm_model=llm_response.model,
-            matched_rule=(
-                llm_response.matched_rule
-            ),
+            llm_reply=llm_reply,
+            llm_model=llm_model,
+            matched_rule=matched_rule,
             governance_allowed=(
-                governance_result.allowed
+                commerce_response.allowed
             ),
             risk_score=(
-                governance_result.risk_score
+                commerce_response.risk_score
             ),
             compliance_score=(
-                governance_result
-                .compliance_score
+                commerce_response.compliance_score
             ),
-            final_reply=(
-                governance_result
-                .sanitized_reply
-            ),
+            final_reply=commerce_response.text,
             execution_time_ms=elapsed_ms,
             warnings=list(
-                governance_result.warnings
+                governance_data["warnings"]
             ),
             metadata={
                 "scenario_id": (
@@ -451,9 +375,7 @@ class BakeryDemo:
                 "search_plan": (
                     search_plan_data
                 ),
-                "governance": (
-                    governance_result.to_dict()
-                ),
+                "governance": governance_data,
             },
         )
 
@@ -526,71 +448,6 @@ class BakeryDemo:
             self.renderer.render(
                 report
             )
-
-    @staticmethod
-    def _build_prompt(
-        *,
-        scenario: DemoScenario,
-        search_plan_data: dict[str, Any],
-    ) -> str:
-        """สร้าง Prompt พร้อม Search Plan."""
-
-        model_text = (
-            ", ".join(
-                search_plan_data[
-                    "extracted_models"
-                ]
-            )
-            or "ไม่พบ"
-        )
-
-        token_text = (
-            ", ".join(
-                search_plan_data[
-                    "extracted_tokens"
-                ]
-            )
-            or "ไม่พบ"
-        )
-
-        top_tasks = (
-            search_plan_data[
-                "tasks"
-            ][:5]
-        )
-
-        task_lines = [
-            (
-                f"- {task['keyword']} "
-                f"(priority="
-                f"{task['priority']}, "
-                f"source="
-                f"{task['source']})"
-            )
-            for task in top_tasks
-        ]
-
-        task_text = (
-            "\n".join(
-                task_lines
-            )
-            or "- ไม่พบ Search Task"
-        )
-
-        return (
-            "คุณคือ AI Sales Agent ของร้าน "
-            "Bakery D'Ver\n"
-            f"Platform: {scenario.platform}\n"
-            "ตอบอย่างสุภาพ กระชับ "
-            "และไม่เดาราคา สต็อก "
-            "หรือโปรโมชั่น\n"
-            f"Detected Models: {model_text}\n"
-            f"Detected Tokens: {token_text}\n"
-            "Search Tasks:\n"
-            f"{task_text}\n"
-            "Customer Message: "
-            f"{scenario.customer_message}"
-        )
 
 
 def print_usage() -> None:

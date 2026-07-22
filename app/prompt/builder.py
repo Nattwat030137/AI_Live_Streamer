@@ -9,7 +9,10 @@ from typing import Any
 from app.prompt import style
 from app.prompt.style import ResponseStyle, resolve_response_style
 from app.search_planner import SearchPlan
-from demo.knowledge_retriever import KnowledgeResult, ProductKnowledge
+from app.services.product_knowledge_service import (
+    KnowledgeResult,
+    ProductKnowledge,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +260,9 @@ class CommercePromptBuilder:
 
 def main() -> None:
     from app.search_planner import create_search_plan
-    from demo.knowledge_retriever import ProductCatalogRetriever
+    from app.services.product_knowledge_service import (
+    ProductCatalogRetriever,
+)
 
     message = "รุ่น5040คืออะไร"
     plan = create_search_plan(message)

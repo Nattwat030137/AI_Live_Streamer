@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 from demo.bakery_demo import BakeryDemo
 from demo.sample_data import DemoScenario
 
@@ -35,6 +37,84 @@ def assert_common_report(
     )
 
 
+def test_commerce_dependencies_are_shared(
+    demo: BakeryDemo,
+) -> None:
+    assert (
+        demo.commerce_service
+        .response_generation_service
+        is demo.response_generation
+    )
+
+    assert (
+        demo.commerce_service.governance_engine
+        is demo.governance
+    )
+
+
+def test_run_scenario_prepares_pipeline_once(
+    demo: BakeryDemo,
+) -> None:
+    original_prepare = (
+        demo.commerce_service.prepare_pipeline
+    )
+    prepare_spy = Mock(
+        wraps=original_prepare,
+    )
+    demo.commerce_service.prepare_pipeline = (
+        prepare_spy
+    )
+
+    scenario = DemoScenario(
+        scenario_id="prepare-pipeline-test",
+        title="Prepare Pipeline Test",
+        customer_message="รุ่น 5040",
+        platform="shopee",
+        expected_rule="PRODUCT_CATALOG",
+    )
+
+    report = demo.run_scenario(
+        scenario
+    )
+
+    prepare_spy.assert_called_once_with(
+        customer_message="รุ่น 5040",
+        platform="shopee",
+    )
+    assert report.matched_rule == "PRODUCT_CATALOG"
+
+
+def test_run_scenario_uses_commerce_response(
+    demo: BakeryDemo,
+) -> None:
+    original_process = (
+        demo.commerce_service
+        .process_prepared_pipeline
+    )
+    process_spy = Mock(
+        wraps=original_process,
+    )
+    demo.commerce_service.process_prepared_pipeline = (
+        process_spy
+    )
+
+    scenario = DemoScenario(
+        scenario_id="commerce-response-test",
+        title="Commerce Response Test",
+        customer_message="รุ่น 5040",
+        platform="shopee",
+        expected_rule="PRODUCT_CATALOG",
+    )
+
+    report = demo.run_scenario(
+        scenario
+    )
+
+    process_spy.assert_called_once()
+    assert report.matched_rule == "PRODUCT_CATALOG"
+    assert report.governance_allowed is True
+
+
 def test_product_5040(
     demo: BakeryDemo,
 ) -> None:
@@ -50,6 +130,21 @@ def test_product_5040(
 
     report = demo.run_scenario(
         scenario
+    )
+
+    assert len(demo.memory.turns) == 2
+
+    assert [
+        turn.role
+        for turn in demo.memory.turns
+    ] == [
+        "customer",
+        "assistant",
+    ]
+
+    assert (
+        demo.memory.latest_assistant_message()
+        == report.llm_reply
     )
 
     assert_common_report(
@@ -222,6 +317,102 @@ def test_greeting(
     )
 
     assert "สวัสดี" in report.final_reply
+
+def test_demo_and_commerce_share_memory(
+    demo: BakeryDemo,
+) -> None:
+    """ยืนยันว่า Demo และ CommerceService ใช้ Memory เดียวกัน."""
+
+    assert (
+        demo.commerce_service.memory
+        is demo.memory
+    )
+
+
+def test_knowledge_is_retrieved_once(
+    demo: BakeryDemo,
+    monkeypatch,
+) -> None:
+    """ยืนยันว่า Scenario หนึ่งรายการค้น Knowledge ครั้งเดียว."""
+
+    retriever = (
+        demo.commerce_service.knowledge_retriever
+    )
+    original_retrieve = retriever.retrieve
+    call_count = 0
+
+    def counting_retrieve(plan):
+        nonlocal call_count
+
+        call_count += 1
+
+        return original_retrieve(
+            plan
+        )
+
+    monkeypatch.setattr(
+        retriever,
+        "retrieve",
+        counting_retrieve,
+    )
+
+    scenario = DemoScenario(
+        scenario_id="single-retrieval-5040",
+        title="Single Knowledge Retrieval",
+        customer_message="รุ่น5040",
+        platform="shopee",
+        expected_rule="PRODUCT_CATALOG",
+    )
+
+    report = demo.run_scenario(
+        scenario
+    )
+
+    assert report.matched_rule == (
+        "PRODUCT_CATALOG"
+    )
+    assert call_count == 1
+
+def test_response_is_generated_once(
+    demo: BakeryDemo,
+    monkeypatch,
+) -> None:
+    """ยืนยันว่า Scenario หนึ่งรายการสร้างคำตอบครั้งเดียว."""
+
+    service = demo.response_generation
+    original_generate = service.generate
+    call_count = 0
+
+    def counting_generate(**kwargs):
+        nonlocal call_count
+
+        call_count += 1
+
+        return original_generate(
+            **kwargs
+        )
+
+    monkeypatch.setattr(
+        service,
+        "generate",
+        counting_generate,
+    )
+
+    scenario = DemoScenario(
+        scenario_id="single-response-generation",
+        title="Single Response Generation",
+        customer_message="สวัสดีครับ",
+        platform="shopee",
+        expected_rule="GREETING",
+    )
+
+    report = demo.run_scenario(
+        scenario
+    )
+
+    assert report.matched_rule == "GREETING"
+    assert call_count == 1
+    assert service.provider is demo.llm
 
 
 def main() -> None:

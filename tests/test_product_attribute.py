@@ -55,6 +55,13 @@ def main() -> None:
             ProductAttribute.BAG,
         ),
         check(
+            "Detect seal bag phrase",
+            detect_product_attribute(
+                "ถาด5073 ใช้กับถุงซีลขนาดเท่าไหร่"
+            ),
+            ProductAttribute.BAG,
+        ),
+        check(
             "Detect category",
             detect_product_attribute("อยู่หมวดอะไร"),
             ProductAttribute.CATEGORY,
@@ -85,6 +92,11 @@ def main() -> None:
 
     if passed_count != total_count:
         raise SystemExit(1)
+
+def test_detects_seal_bag_phrase() -> None:
+    assert detect_product_attribute(
+        "ถาด5073 ใช้กับถุงซีลขนาดเท่าไหร่"
+    ) is ProductAttribute.BAG
 
 
 if __name__ == "__main__":

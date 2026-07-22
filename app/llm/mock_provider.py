@@ -11,7 +11,7 @@ from app.llm.types import (
     LLMResponse,
     LLMUsage,
 )
-from demo.knowledge_retriever import KnowledgeResult
+from app.services.product_knowledge_service import KnowledgeResult
 from demo.mock_llm import MockLLMProvider
 
 
