@@ -36,6 +36,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: Initialize product database
+        run: |
+          python -m app.catalog.init_product_db
+
       - name: Compile application
         run: |
           python -m compileall -q app demo core config
