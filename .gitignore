@@ -23,3 +23,8 @@ backup/
 .vscode/
 Thumbs.db
 Desktop.ini
+# Google OAuth credentials and tokens
+.secrets/
+client_secret*.json
+youtube_oauth*.json
+youtube_token*.json
