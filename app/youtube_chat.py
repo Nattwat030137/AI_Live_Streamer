@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from collections.abc import (
     Callable,
     Sequence,
 )
+
+from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
+
 from app.live_controller import (
     LiveCommerceController,
 )
-
 from app.youtube_auth import (
     build_youtube_service,
 )
@@ -22,6 +26,110 @@ from app.youtube_live import (
 
 OutputCallback = Callable[[str], None]
 SleepCallback = Callable[[float], None]
+
+
+def _http_error_reason(
+    error: HttpError,
+) -> str:
+    """Extract a YouTube error reason without exposing details."""
+
+    try:
+        payload = json.loads(
+            error.content.decode(
+                "utf-8"
+            )
+        )
+        errors = (
+            payload
+            .get("error", {})
+            .get("errors", [])
+        )
+
+        if errors:
+            return str(
+                errors[0].get(
+                    "reason",
+                    "",
+                )
+            )
+
+    except (
+        AttributeError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ):
+        pass
+
+    return ""
+
+
+def _format_youtube_error(
+    error: Exception,
+) -> str:
+    """Return a safe user-facing YouTube error message."""
+
+    if isinstance(
+        error,
+        RefreshError,
+    ):
+        return (
+            "YouTube authorization expired. "
+            "Authorize the application again."
+        )
+
+    if not isinstance(
+        error,
+        HttpError,
+    ):
+        return (
+            "YouTube integration failed "
+            "unexpectedly."
+        )
+
+    status_code = error.status_code
+    reason = _http_error_reason(
+        error
+    )
+
+    if reason in {
+        "quotaExceeded",
+        "dailyLimitExceeded",
+        "rateLimitExceeded",
+    }:
+        return (
+            "YouTube API quota has been reached. "
+            "Try again after the quota resets."
+        )
+
+    if status_code == 401:
+        return (
+            "YouTube authorization expired. "
+            "Authorize the application again."
+        )
+
+    if (
+        status_code == 404
+        or reason in {
+            "liveChatDisabled",
+            "liveChatEnded",
+            "liveChatNotFound",
+        }
+    ):
+        return (
+            "The active YouTube Live Chat "
+            "is no longer available."
+        )
+
+    if status_code == 429:
+        return (
+            "YouTube is receiving too many "
+            "requests. Try again shortly."
+        )
+
+    return (
+        "YouTube API request failed "
+        f"with HTTP {status_code}."
+    )
 
 
 def run_read_only(
@@ -272,24 +380,26 @@ def build_argument_parser(
 def main(
     argv: Sequence[str] | None = None,
 ) -> int:
-    """Authorize and read the active YouTube Live Chat."""
+    """Authorize and run the selected YouTube chat mode."""
 
     parser = build_argument_parser()
     arguments = parser.parse_args(
         argv
     )
 
-    youtube = build_youtube_service(
-        client_file=arguments.credentials,
-        token_file=arguments.token,
-    )
-    connector = (
-        YouTubeLiveChatConnector(
-            youtube=youtube,
-        )
-    )
-
     try:
+        youtube = build_youtube_service(
+            client_file=(
+                arguments.credentials
+            ),
+            token_file=arguments.token,
+        )
+        connector = (
+            YouTubeLiveChatConnector(
+                youtube=youtube,
+            )
+        )
+
         if arguments.auto_reply:
             controller = (
                 LiveCommerceController(
@@ -304,6 +414,17 @@ def main(
         return run_read_only(
             connector=connector,
         )
+
+    except (
+        RefreshError,
+        HttpError,
+    ) as error:
+        print(
+            _format_youtube_error(
+                error
+            )
+        )
+        return 2
 
     except KeyboardInterrupt:
         print("")

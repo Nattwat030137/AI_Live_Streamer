@@ -1,10 +1,17 @@
 """Tests for the YouTube Live Chat command."""
 
+import json
 from unittest.mock import MagicMock
 
+import httplib2
+from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
+
 from app.youtube_chat import (
+    _format_youtube_error,
     _normalize_youtube_reply,
     build_argument_parser,
+    main,
     run_auto_reply,
     run_read_only,
 )
@@ -184,3 +191,90 @@ def test_youtube_reply_is_limited_to_200_characters() -> None:
 
     assert len(reply) == 200
     assert reply.endswith("...")
+
+
+def test_formats_quota_error_safely() -> None:
+    """Return a safe message when YouTube quota is exhausted."""
+
+    response = httplib2.Response(
+        {
+            "status": "403",
+            "reason": "Forbidden",
+        }
+    )
+    content = json.dumps(
+        {
+            "error": {
+                "code": 403,
+                "message": (
+                    "internal quota detail"
+                ),
+                "errors": [
+                    {
+                        "reason": (
+                            "quotaExceeded"
+                        ),
+                    },
+                ],
+            },
+        }
+    ).encode("utf-8")
+    error = HttpError(
+        response,
+        content,
+    )
+
+    message = _format_youtube_error(
+        error
+    )
+
+    assert message == (
+        "YouTube API quota has been reached. "
+        "Try again after the quota resets."
+    )
+    assert (
+        "internal quota detail"
+        not in message
+    )
+
+
+def test_main_handles_expired_authorization(
+    monkeypatch,
+    capsys,
+) -> None:
+    """Stop safely when OAuth authorization has expired."""
+
+    authorization_error = RefreshError(
+        "internal invalid grant detail"
+    )
+    failing_service = MagicMock(
+        side_effect=authorization_error,
+    )
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "build_youtube_service",
+        failing_service,
+    )
+
+    exit_code = main(
+        [
+            "--credentials",
+            "client.json",
+            "--token",
+            "token.json",
+            "--read-only",
+        ]
+    )
+
+    output = capsys.readouterr().out
+
+    assert exit_code == 2
+    assert (
+        "YouTube authorization expired. "
+        "Authorize the application again."
+        in output
+    )
+    assert (
+        "internal invalid grant detail"
+        not in output
+    )
