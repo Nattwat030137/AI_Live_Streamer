@@ -7,6 +7,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from openpyxl import load_workbook
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -14,6 +16,12 @@ DEFAULT_JSON_PATH = (
     PROJECT_ROOT
     / "data"
     / "bakery_products.json"
+)
+
+DEFAULT_EXCEL_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "products_source.xlsx"
 )
 
 DEFAULT_DATABASE_PATH = (
@@ -73,6 +81,20 @@ ON CONFLICT(model) DO UPDATE SET
     notes = excluded.notes,
     source = excluded.source,
     updated_at = CURRENT_TIMESTAMP;
+"""
+INSERT_EXCEL_PRODUCT_SQL = """
+INSERT INTO products (
+    model,
+    name,
+    category,
+    compatible_bag,
+    material,
+    color,
+    notes,
+    source
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(model) DO NOTHING;
 """
 
 
@@ -182,21 +204,185 @@ def load_json_products(
     return products
 
 
+def _clean_excel_text(
+    value: Any,
+) -> str:
+    """Convert an Excel value to clean text."""
+
+    if value is None:
+        return ""
+
+    return str(value).strip()
+
+
+def load_excel_products(
+    excel_path: Path,
+    *,
+    sheet_name: str = "Sheet 1",
+    first_data_row: int = 4,
+) -> list[dict[str, Any]]:
+    """Load and deduplicate products exported from GoSell."""
+
+    if not excel_path.exists():
+        raise FileNotFoundError(
+            f"ไม่พบไฟล์ Product Excel: {excel_path}"
+        )
+
+    workbook = load_workbook(
+        filename=excel_path,
+        read_only=True,
+        data_only=True,
+    )
+
+    try:
+        if sheet_name not in workbook.sheetnames:
+            raise ValueError(
+                f"ไม่พบชีต {sheet_name} "
+                f"ชีตที่มีอยู่คือ {workbook.sheetnames}"
+            )
+
+        worksheet = workbook[sheet_name]
+        products_by_model: dict[
+            str,
+            dict[str, Any],
+        ] = {}
+
+        for row in worksheet.iter_rows(
+            min_row=first_data_row,
+            values_only=True,
+        ):
+            connection_name = (
+                _clean_excel_text(row[0])
+            )
+            product_name = (
+                _clean_excel_text(row[3])
+            )
+            sku = _clean_excel_text(
+                row[4]
+            )
+            description = (
+                _clean_excel_text(row[6])
+            )
+            category = (
+                _clean_excel_text(row[7])
+            )
+
+            model = (
+                sku
+                or connection_name
+            )
+            name = (
+                connection_name
+                or product_name
+                or model
+            )
+
+            if not model or not name:
+                continue
+
+            notes_parts = [
+                value
+                for value in (
+                    product_name,
+                    description,
+                )
+                if (
+                    value
+                    and value != "-"
+                    and value != name
+                )
+            ]
+            notes = " | ".join(
+                notes_parts
+            )
+
+            normalized_model = (
+                model.casefold()
+            )
+            existing_product = (
+                products_by_model.get(
+                    normalized_model
+                )
+            )
+
+            if existing_product is None:
+                products_by_model[
+                    normalized_model
+                ] = {
+                    "model": model,
+                    "name": name,
+                    "category": category,
+                    "compatible_bag": "",
+                    "material": "",
+                    "color": "",
+                    "notes": notes,
+                    "source": excel_path.name,
+                }
+                continue
+
+            if (
+                not existing_product["category"]
+                and category
+            ):
+                existing_product[
+                    "category"
+                ] = category
+
+            if (
+                notes
+                and notes
+                not in existing_product["notes"]
+            ):
+                existing_notes = (
+                    existing_product["notes"]
+                )
+                existing_product["notes"] = (
+                    f"{existing_notes} | {notes}"
+                    if existing_notes
+                    else notes
+                )
+
+        return list(
+            products_by_model.values()
+        )
+
+    finally:
+        workbook.close()
+
+
 def initialize_database(
     *,
     json_path: Path = DEFAULT_JSON_PATH,
+    excel_path: Path | None = (
+        DEFAULT_EXCEL_PATH
+    ),
     database_path: Path = DEFAULT_DATABASE_PATH,
 ) -> int:
     """
-    สร้างฐานข้อมูลและนำเข้าสินค้าจาก JSON.
+    Build the runtime catalog from curated JSON and Excel.
+
+    Curated JSON products take precedence when models overlap.
 
     Returns:
-        จำนวนสินค้าที่นำเข้า
+        Total number of products in the database.
     """
 
-    products = load_json_products(
+    curated_products = load_json_products(
         json_path
     )
+
+    excel_products = (
+        load_excel_products(
+            excel_path
+        )
+        if excel_path is not None
+        else []
+    )
+
+    curated_models = {
+        product["model"].casefold()
+        for product in curated_products
+    }
 
     database_path.parent.mkdir(
         parents=True,
@@ -218,7 +404,28 @@ def initialize_database(
             CREATE_CATEGORY_INDEX_SQL
         )
 
-        for product in products:
+        connection.execute(
+            """
+            DELETE FROM products
+            WHERE source = ?
+            """,
+            (
+                json_path.name,
+            ),
+        )
+
+        if excel_path is not None:
+            connection.execute(
+                """
+                DELETE FROM products
+                WHERE source = ?
+                """,
+                (
+                    excel_path.name,
+                ),
+            )
+
+        for product in curated_products:
             connection.execute(
                 UPSERT_PRODUCT_SQL,
                 (
@@ -233,10 +440,41 @@ def initialize_database(
                 ),
             )
 
+        for product in excel_products:
+            if (
+                product["model"].casefold()
+                in curated_models
+            ):
+                continue
+
+            connection.execute(
+                INSERT_EXCEL_PRODUCT_SQL,
+                (
+                    product["model"],
+                    product["name"],
+                    product["category"],
+                    product["compatible_bag"],
+                    product["material"],
+                    product["color"],
+                    product["notes"],
+                    product["source"],
+                ),
+            )
+
         connection.commit()
 
-    return len(
-        products
+        count_row = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM products
+            """
+        ).fetchone()
+
+    if count_row is None:
+        return 0
+
+    return int(
+        count_row[0]
     )
 
 
