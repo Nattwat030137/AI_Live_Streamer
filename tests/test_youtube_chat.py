@@ -4,9 +4,16 @@ import json
 from unittest.mock import MagicMock
 
 import httplib2
+import httpx
 import pytest
 from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    RateLimitError,
+)
 
 from app.youtube_chat import (
     _format_youtube_error,
@@ -373,6 +380,7 @@ def test_cli_accepts_auto_reply_mode() -> None:
         arguments.max_replies_per_minute
         == 20
     )
+    assert arguments.provider == "mock"
 
 
 def test_cli_accepts_viewer_cooldown_seconds() -> None:
@@ -444,6 +452,49 @@ def test_cli_rejects_zero_max_replies() -> None:
     assert captured.value.code == 2
 
 
+def test_cli_accepts_openai_provider() -> None:
+    """Accept OpenAI as the YouTube reply provider."""
+
+    parser = build_argument_parser()
+
+    arguments = parser.parse_args(
+        [
+            "--credentials",
+            "client.json",
+            "--token",
+            "token.json",
+            "--auto-reply",
+            "--provider",
+            "openai",
+        ]
+    )
+
+    assert arguments.provider == "openai"
+
+
+def test_cli_rejects_unknown_provider() -> None:
+    """Reject an unsupported YouTube reply provider."""
+
+    parser = build_argument_parser()
+
+    with pytest.raises(
+        SystemExit,
+    ) as captured:
+        parser.parse_args(
+            [
+                "--credentials",
+                "client.json",
+                "--token",
+                "token.json",
+                "--auto-reply",
+                "--provider",
+                "unsupported",
+            ]
+        )
+
+    assert captured.value.code == 2
+
+
 def test_main_forwards_viewer_cooldown_seconds(
     monkeypatch,
 ) -> None:
@@ -494,6 +545,8 @@ def test_main_forwards_viewer_cooldown_seconds(
             "--token",
             "token.json",
             "--auto-reply",
+            "--provider",
+            "openai",
             "--viewer-cooldown-seconds",
             "45",
             "--max-replies-per-minute",
@@ -507,6 +560,9 @@ def test_main_forwards_viewer_cooldown_seconds(
         controller=controller,
         viewer_cooldown_seconds=45.0,
         max_replies_per_minute=7,
+    )
+    controller_factory.assert_called_once_with(
+        provider_name="openai",
     )
 
 
@@ -629,3 +685,145 @@ def test_cli_rejects_negative_viewer_cooldown() -> None:
         )
 
     assert captured.value.code == 2
+
+
+def test_main_handles_openai_connection_error(
+    monkeypatch,
+    capsys,
+) -> None:
+    """Stop safely when OpenAI cannot be reached."""
+
+    connection_error = APIConnectionError(
+        request=httpx.Request(
+            "POST",
+            "https://api.openai.com/v1/responses",
+        )
+    )
+
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "build_youtube_service",
+        MagicMock(
+            return_value=MagicMock(),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "LiveCommerceController",
+        MagicMock(
+            side_effect=connection_error,
+        ),
+    )
+
+    exit_code = main(
+        [
+            "--credentials",
+            "client.json",
+            "--token",
+            "token.json",
+            "--auto-reply",
+            "--provider",
+            "openai",
+        ]
+    )
+
+    output = capsys.readouterr().out
+
+    assert exit_code == 2
+    assert (
+        "กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต"
+        in output
+    )
+    assert "api.openai.com" not in output
+
+@pytest.mark.parametrize(
+    (
+        "openai_error",
+        "expected_message",
+    ),
+    [
+        (
+            AuthenticationError(
+                "internal authentication detail",
+                response=httpx.Response(
+                    401,
+                    request=httpx.Request(
+                        "POST",
+                        "https://api.openai.com/v1/responses",
+                    ),
+                ),
+                body={},
+            ),
+            "API Key ไม่ถูกต้อง",
+        ),
+        (
+            RateLimitError(
+                "internal rate limit detail",
+                response=httpx.Response(
+                    429,
+                    request=httpx.Request(
+                        "POST",
+                        "https://api.openai.com/v1/responses",
+                    ),
+                ),
+                body={},
+            ),
+            "กรุณาตรวจสอบเครดิตและ Usage Limit",
+        ),
+        (
+            APIStatusError(
+                "internal API status detail",
+                response=httpx.Response(
+                    500,
+                    request=httpx.Request(
+                        "POST",
+                        "https://api.openai.com/v1/responses",
+                    ),
+                ),
+                body={},
+            ),
+            "เกิดข้อผิดพลาดจาก OpenAI API รหัส 500",
+        ),
+    ],
+)
+def test_main_handles_openai_errors_safely(
+    monkeypatch,
+    capsys,
+    openai_error,
+    expected_message,
+) -> None:
+    """Report safe OpenAI errors without internal details."""
+
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "build_youtube_service",
+        MagicMock(
+            return_value=MagicMock(),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "LiveCommerceController",
+        MagicMock(
+            side_effect=openai_error,
+        ),
+    )
+
+    exit_code = main(
+        [
+            "--credentials",
+            "client.json",
+            "--token",
+            "token.json",
+            "--auto-reply",
+            "--provider",
+            "openai",
+        ]
+    )
+
+    output = capsys.readouterr().out
+
+    assert exit_code == 2
+    assert expected_message in output
+    assert "internal" not in output
+    assert "api.openai.com" not in output

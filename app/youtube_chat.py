@@ -13,6 +13,12 @@ from collections.abc import (
 
 from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    RateLimitError,
+)
 
 from app.live_controller import (
     LiveCommerceController,
@@ -469,25 +475,39 @@ def build_argument_parser(
         ),
     )
     mode_group = (
-    parser
-    .add_mutually_exclusive_group(
-        required=True,
+        parser
+        .add_mutually_exclusive_group(
+            required=True,
+        )
     )
-)
     mode_group.add_argument(
-    "--read-only",
-    action="store_true",
-    help=(
-        "Read chat without sending "
-        "any reply."
-    ),
-)
+        "--read-only",
+        action="store_true",
+        help=(
+            "Read chat without sending "
+            "any reply."
+        ),
+    )
     mode_group.add_argument(
         "--auto-reply",
         action="store_true",
         help=(
             "Generate and send replies "
-            "with the mock provider."
+            "with the selected provider."
+        ),
+    )
+
+    parser.add_argument(
+        "--provider",
+        choices=(
+            "mock",
+            "openai",
+        ),
+        default="mock",
+        help=(
+            "LLM provider used for "
+            "auto-replies "
+            "(default: mock)."
         ),
     )
 
@@ -543,7 +563,7 @@ def main(
         if arguments.auto_reply:
             controller = (
                 LiveCommerceController(
-                    provider_name="mock",
+                    provider_name=arguments.provider,
                 )
             )
             return run_auto_reply(
@@ -571,6 +591,36 @@ def main(
             _format_youtube_error(
                 error
             )
+        )
+        return 2
+
+    except AuthenticationError:
+        print(
+            "เกิดข้อผิดพลาด: "
+            "API Key ไม่ถูกต้อง"
+        )
+        return 2
+
+    except RateLimitError:
+        print(
+            "เกิดข้อผิดพลาด: "
+            "กรุณาตรวจสอบเครดิตและ "
+            "Usage Limit"
+        )
+        return 2
+
+    except APIConnectionError:
+        print(
+            "เกิดข้อผิดพลาด: "
+            "กรุณาตรวจสอบการเชื่อมต่อ"
+            "อินเทอร์เน็ต"
+        )
+        return 2
+
+    except APIStatusError as error:
+        print(
+            "เกิดข้อผิดพลาดจาก OpenAI API "
+            f"รหัส {error.status_code}"
         )
         return 2
 
