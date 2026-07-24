@@ -244,6 +244,110 @@ def test_auto_reply_applies_per_viewer_cooldown() -> None:
     )
 
 
+def test_auto_reply_applies_global_rate_limit() -> None:
+    """Limit total replies and allow them after the window expires."""
+
+    connector = MagicMock()
+    controller = MagicMock()
+
+    connector.find_active_live_chat_id.return_value = (
+        "chat-123"
+    )
+
+    existing_page = YouTubeChatPage(
+        messages=(),
+        next_page_token="token-1",
+        polling_interval_seconds=1.0,
+    )
+    first_page = YouTubeChatPage(
+        messages=tuple(
+            YouTubeChatMessage(
+                message_id=f"message-{index}",
+                text=f"ข้อความที่ {index}",
+                author_channel_id=(
+                    f"viewer-{index}"
+                ),
+                author_name=f"Viewer {index}",
+            )
+            for index in range(1, 4)
+        ),
+        next_page_token="token-2",
+        polling_interval_seconds=1.0,
+    )
+    limited_page = YouTubeChatPage(
+        messages=(
+            YouTubeChatMessage(
+                message_id="message-4",
+                text="ข้อความที่ 4",
+                author_channel_id="viewer-4",
+                author_name="Viewer 4",
+            ),
+        ),
+        next_page_token="token-3",
+        polling_interval_seconds=1.0,
+    )
+    expired_page = YouTubeChatPage(
+        messages=(
+            YouTubeChatMessage(
+                message_id="message-5",
+                text="ข้อความที่ 5",
+                author_channel_id="viewer-5",
+                author_name="Viewer 5",
+            ),
+        ),
+        next_page_token="token-4",
+        polling_interval_seconds=1.0,
+    )
+
+    connector.list_messages.side_effect = [
+        existing_page,
+        first_page,
+        limited_page,
+        expired_page,
+    ]
+    controller.process_message.return_value = (
+        MagicMock(
+            allowed=True,
+            text="ตอบกลับค่ะ",
+        )
+    )
+
+    clock = MagicMock(
+        side_effect=[
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            2.0,
+            2.0,
+            10.0,
+            61.0,
+            61.0,
+        ]
+    )
+    output_messages: list[str] = []
+
+    exit_code = run_auto_reply(
+        connector=connector,
+        controller=controller,
+        output_callback=output_messages.append,
+        sleep_callback=MagicMock(),
+        clock_callback=clock,
+        viewer_cooldown_seconds=0.0,
+        max_replies_per_minute=3,
+        max_polls=3,
+    )
+
+    assert exit_code == 0
+    assert controller.process_message.call_count == 4
+    assert connector.send_message.call_count == 4
+    assert any(
+        "global rate limit"
+        in message.lower()
+        for message in output_messages
+    )
+
+
 def test_cli_accepts_auto_reply_mode() -> None:
     """Accept an explicit auto-reply command mode."""
 
@@ -264,6 +368,10 @@ def test_cli_accepts_auto_reply_mode() -> None:
     assert (
         arguments.viewer_cooldown_seconds
         == 30.0
+    )
+    assert (
+        arguments.max_replies_per_minute
+        == 20
     )
 
 
@@ -288,6 +396,52 @@ def test_cli_accepts_viewer_cooldown_seconds() -> None:
         arguments.viewer_cooldown_seconds
         == 45.0
     )
+
+
+def test_cli_accepts_max_replies_per_minute() -> None:
+    """Accept a custom global reply limit from the CLI."""
+
+    parser = build_argument_parser()
+
+    arguments = parser.parse_args(
+        [
+            "--credentials",
+            "client.json",
+            "--token",
+            "token.json",
+            "--auto-reply",
+            "--max-replies-per-minute",
+            "7",
+        ]
+    )
+
+    assert (
+        arguments.max_replies_per_minute
+        == 7
+    )
+
+
+def test_cli_rejects_zero_max_replies() -> None:
+    """Reject a global reply limit below one."""
+
+    parser = build_argument_parser()
+
+    with pytest.raises(
+        SystemExit,
+    ) as captured:
+        parser.parse_args(
+            [
+                "--credentials",
+                "client.json",
+                "--token",
+                "token.json",
+                "--auto-reply",
+                "--max-replies-per-minute",
+                "0",
+            ]
+        )
+
+    assert captured.value.code == 2
 
 
 def test_main_forwards_viewer_cooldown_seconds(
@@ -342,6 +496,8 @@ def test_main_forwards_viewer_cooldown_seconds(
             "--auto-reply",
             "--viewer-cooldown-seconds",
             "45",
+            "--max-replies-per-minute",
+            "7",
         ]
     )
 
@@ -350,6 +506,7 @@ def test_main_forwards_viewer_cooldown_seconds(
         connector=connector,
         controller=controller,
         viewer_cooldown_seconds=45.0,
+        max_replies_per_minute=7,
     )
 
 

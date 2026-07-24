@@ -224,6 +224,7 @@ def run_auto_reply(
     sleep_callback: SleepCallback = time.sleep,
     clock_callback: ClockCallback = time.monotonic,
     viewer_cooldown_seconds: float = 30.0,
+    max_replies_per_minute: int = 20,
     max_polls: int | None = None,
 ) -> int:
     """Reply only to messages received after startup."""
@@ -234,7 +235,14 @@ def run_auto_reply(
             "must not be negative"
         )
 
+    if max_replies_per_minute < 1:
+        raise ValueError(
+            "max_replies_per_minute "
+            "must be at least 1"
+        )
+
     viewer_reply_times: dict[str, float] = {}
+    global_reply_times: list[float] = []
 
     live_chat_id = (
         connector.find_active_live_chat_id()
@@ -310,6 +318,27 @@ def run_auto_reply(
                     "viewer cooldown."
                 )
                 continue
+
+            global_reply_times = [
+                reply_time
+                for reply_time
+                in global_reply_times
+                if (
+                    current_time
+                    - reply_time
+                ) < 60.0
+            ]
+
+            if (
+                len(global_reply_times)
+                >= max_replies_per_minute
+            ):
+                output_callback(
+                    "Skipped reply due to "
+                    "global rate limit."
+                )
+                continue
+
             response = (
                 controller.process_message(
                     message.text,
@@ -346,9 +375,13 @@ def run_auto_reply(
                 live_chat_id=live_chat_id,
                 text=reply_text,
             )
+            sent_time = clock_callback()
             viewer_reply_times[
                 viewer_key
-            ] = clock_callback()
+            ] = sent_time
+            global_reply_times.append(
+                sent_time
+            )
             output_callback(
                 "AI replied to "
                 f"{message.author_name or 'Viewer'}."
@@ -384,6 +417,26 @@ def _non_negative_float(
         raise argparse.ArgumentTypeError(
             "must be a finite, "
             "non-negative number"
+        )
+
+    return parsed_value
+
+
+def _positive_integer(
+    value: str,
+) -> int:
+    """Parse a positive command-line integer."""
+
+    try:
+        parsed_value = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "must be an integer"
+        ) from error
+
+    if parsed_value < 1:
+        raise argparse.ArgumentTypeError(
+            "must be at least 1"
         )
 
     return parsed_value
@@ -450,6 +503,17 @@ def build_argument_parser(
         ),
     )
 
+    parser.add_argument(
+        "--max-replies-per-minute",
+        type=_positive_integer,
+        default=20,
+        metavar="COUNT",
+        help=(
+            "Maximum AI replies sent "
+            "per rolling minute "
+            "(default: 20)."
+        ),
+    )
     return parser
 
 
@@ -488,6 +552,10 @@ def main(
                 viewer_cooldown_seconds=(
                     arguments
                     .viewer_cooldown_seconds
+                ),
+                max_replies_per_minute=(
+                    arguments
+                    .max_replies_per_minute
                 ),
             )
 
