@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import time
 from collections.abc import (
     Callable,
@@ -364,6 +365,30 @@ def run_auto_reply(
     return 0
 
 
+def _non_negative_float(
+    value: str,
+) -> float:
+    """Parse a finite, non-negative command-line number."""
+
+    try:
+        parsed_value = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "must be a number"
+        ) from error
+
+    if (
+        not math.isfinite(parsed_value)
+        or parsed_value < 0
+    ):
+        raise argparse.ArgumentTypeError(
+            "must be a finite, "
+            "non-negative number"
+        )
+
+    return parsed_value
+
+
 def build_argument_parser(
 ) -> argparse.ArgumentParser:
     """Build command-line arguments."""
@@ -405,13 +430,25 @@ def build_argument_parser(
     ),
 )
     mode_group.add_argument(
-    "--auto-reply",
-    action="store_true",
-    help=(
-        "Generate and send replies "
-        "with the mock provider."
-    ),
-)
+        "--auto-reply",
+        action="store_true",
+        help=(
+            "Generate and send replies "
+            "with the mock provider."
+        ),
+    )
+
+    parser.add_argument(
+        "--viewer-cooldown-seconds",
+        type=_non_negative_float,
+        default=30.0,
+        metavar="SECONDS",
+        help=(
+            "Minimum seconds between replies "
+            "to the same viewer "
+            "(default: 30)."
+        ),
+    )
 
     return parser
 
@@ -448,6 +485,10 @@ def main(
             return run_auto_reply(
                 connector=connector,
                 controller=controller,
+                viewer_cooldown_seconds=(
+                    arguments
+                    .viewer_cooldown_seconds
+                ),
             )
 
         return run_read_only(
