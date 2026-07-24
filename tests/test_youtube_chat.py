@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 import httplib2
+import pytest
 from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 
@@ -260,6 +261,96 @@ def test_cli_accepts_auto_reply_mode() -> None:
 
     assert arguments.auto_reply is True
     assert arguments.read_only is False
+    assert (
+        arguments.viewer_cooldown_seconds
+        == 30.0
+    )
+
+
+def test_cli_accepts_viewer_cooldown_seconds() -> None:
+    """Accept a custom per-viewer cooldown from the CLI."""
+
+    parser = build_argument_parser()
+
+    arguments = parser.parse_args(
+        [
+            "--credentials",
+            "client.json",
+            "--token",
+            "token.json",
+            "--auto-reply",
+            "--viewer-cooldown-seconds",
+            "45",
+        ]
+    )
+
+    assert (
+        arguments.viewer_cooldown_seconds
+        == 45.0
+    )
+
+
+def test_main_forwards_viewer_cooldown_seconds(
+    monkeypatch,
+) -> None:
+    """Pass the configured cooldown to the auto-reply loop."""
+
+    youtube = MagicMock()
+    connector = MagicMock()
+    controller = MagicMock()
+
+    build_service = MagicMock(
+        return_value=youtube,
+    )
+    connector_factory = MagicMock(
+        return_value=connector,
+    )
+    controller_factory = MagicMock(
+        return_value=controller,
+    )
+    auto_reply = MagicMock(
+        return_value=0,
+    )
+
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "build_youtube_service",
+        build_service,
+    )
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "YouTubeLiveChatConnector",
+        connector_factory,
+    )
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "LiveCommerceController",
+        controller_factory,
+    )
+    monkeypatch.setattr(
+        "app.youtube_chat."
+        "run_auto_reply",
+        auto_reply,
+    )
+
+    exit_code = main(
+        [
+            "--credentials",
+            "client.json",
+            "--token",
+            "token.json",
+            "--auto-reply",
+            "--viewer-cooldown-seconds",
+            "45",
+        ]
+    )
+
+    assert exit_code == 0
+    auto_reply.assert_called_once_with(
+        connector=connector,
+        controller=controller,
+        viewer_cooldown_seconds=45.0,
+    )
 
 
 def test_youtube_reply_is_limited_to_200_characters() -> None:
@@ -358,3 +449,26 @@ def test_main_handles_expired_authorization(
         "internal invalid grant detail"
         not in output
     )
+
+
+def test_cli_rejects_negative_viewer_cooldown() -> None:
+    """Reject a negative per-viewer cooldown."""
+
+    parser = build_argument_parser()
+
+    with pytest.raises(
+        SystemExit,
+    ) as captured:
+        parser.parse_args(
+            [
+                "--credentials",
+                "client.json",
+                "--token",
+                "token.json",
+                "--auto-reply",
+                "--viewer-cooldown-seconds",
+                "-1",
+            ]
+        )
+
+    assert captured.value.code == 2
