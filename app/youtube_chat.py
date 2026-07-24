@@ -26,6 +26,7 @@ from app.youtube_live import (
 
 OutputCallback = Callable[[str], None]
 SleepCallback = Callable[[float], None]
+ClockCallback = Callable[[], float]
 
 
 def _http_error_reason(
@@ -220,9 +221,19 @@ def run_auto_reply(
     controller: LiveCommerceController,
     output_callback: OutputCallback = print,
     sleep_callback: SleepCallback = time.sleep,
+    clock_callback: ClockCallback = time.monotonic,
+    viewer_cooldown_seconds: float = 30.0,
     max_polls: int | None = None,
 ) -> int:
     """Reply only to messages received after startup."""
+
+    if viewer_cooldown_seconds < 0:
+        raise ValueError(
+            "viewer_cooldown_seconds "
+            "must not be negative"
+        )
+
+    viewer_reply_times: dict[str, float] = {}
 
     live_chat_id = (
         connector.find_active_live_chat_id()
@@ -273,6 +284,31 @@ def run_auto_reply(
         )
 
         for message in page.messages[:3]:
+            viewer_key = (
+                message.author_channel_id
+                or message.author_name
+                or message.message_id
+            )
+            current_time = clock_callback()
+            last_reply_time = (
+                viewer_reply_times.get(
+                    viewer_key
+                )
+            )
+
+            if (
+                last_reply_time is not None
+                and (
+                    current_time
+                    - last_reply_time
+                )
+                < viewer_cooldown_seconds
+            ):
+                output_callback(
+                    "Skipped reply due to "
+                    "viewer cooldown."
+                )
+                continue
             response = (
                 controller.process_message(
                     message.text,
@@ -309,6 +345,9 @@ def run_auto_reply(
                 live_chat_id=live_chat_id,
                 text=reply_text,
             )
+            viewer_reply_times[
+                viewer_key
+            ] = clock_callback()
             output_callback(
                 "AI replied to "
                 f"{message.author_name or 'Viewer'}."

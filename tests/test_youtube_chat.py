@@ -163,6 +163,86 @@ def test_auto_reply_skips_existing_messages() -> None:
     )
 
 
+def test_auto_reply_applies_per_viewer_cooldown() -> None:
+    """Reply once when one viewer sends messages too quickly."""
+
+    connector = MagicMock()
+    controller = MagicMock()
+
+    connector.find_active_live_chat_id.return_value = (
+        "chat-123"
+    )
+
+    existing_page = YouTubeChatPage(
+        messages=(),
+        next_page_token="token-1",
+        polling_interval_seconds=1.0,
+    )
+    first_page = YouTubeChatPage(
+        messages=(
+            YouTubeChatMessage(
+                message_id="message-1",
+                text="มีรุ่น 5040 ไหม",
+                author_channel_id="viewer-1",
+                author_name="Viewer",
+            ),
+        ),
+        next_page_token="token-2",
+        polling_interval_seconds=1.0,
+    )
+    second_page = YouTubeChatPage(
+        messages=(
+            YouTubeChatMessage(
+                message_id="message-2",
+                text="ราคาเท่าไหร่",
+                author_channel_id="viewer-1",
+                author_name="Viewer",
+            ),
+        ),
+        next_page_token="token-3",
+        polling_interval_seconds=1.0,
+    )
+
+    connector.list_messages.side_effect = [
+        existing_page,
+        first_page,
+        second_page,
+    ]
+    controller.process_message.return_value = (
+        MagicMock(
+            allowed=True,
+            text="พบสินค้าค่ะ",
+        )
+    )
+
+    clock = MagicMock(
+        side_effect=[
+            100.0,
+            100.0,
+            110.0,
+        ]
+    )
+    output_messages: list[str] = []
+
+    exit_code = run_auto_reply(
+        connector=connector,
+        controller=controller,
+        output_callback=output_messages.append,
+        sleep_callback=MagicMock(),
+        clock_callback=clock,
+        viewer_cooldown_seconds=30.0,
+        max_polls=2,
+    )
+
+    assert exit_code == 0
+    assert controller.process_message.call_count == 1
+    assert connector.send_message.call_count == 1
+    assert any(
+        "cooldown" in message.lower()
+        for message in output_messages
+    )
+
+
 def test_cli_accepts_auto_reply_mode() -> None:
     """Accept an explicit auto-reply command mode."""
 
